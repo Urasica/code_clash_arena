@@ -56,28 +56,47 @@ public class GameService {
     }
 
     private String getAiCode() {
-        // P2(AI)를 위한 "추적 알고리즘" 코드 문자열
         return "import sys\n" +
                 "import json\n" +
+                "from collections import deque\n" +
+                "\n" +
+                "def get_next_move(my_pos, coins, walls, board_size):\n" +
+                "    # BFS로 최단 경로 찾기 (가장 가까운 코인 찾기)\n" +
+                "    # 큐: (x, y, path)\n" +
+                "    q = deque([ (my_pos[0], my_pos[1], []) ])\n" +
+                "    visited = set([tuple(my_pos)])\n" +
+                "    wall_set = set(tuple(w) for w in walls)\n" +
+                "    \n" +
+                "    # 코인 위치를 검색하기 쉽게 튜플 집합으로 변환 (옵션이지만 성능상 좋음)\n" +
+                "    # 하지만 리스트 안에 리스트가 있는 coins 구조상, 그냥 리스트 비교가 편함\n" +
+                "    \n" +
+                "    while q:\n" +
+                "        x, y, path = q.popleft()\n" +
+                "        \n" +
+                "        # [수정 포인트] 현재 위치가 코인 리스트 중 하나인가?\n" +
+                "        if [x, y] in coins:\n" +
+                "            return path[0] if path else \"STAY\"\n" +
+                "        \n" +
+                "        # 상하좌우 탐색\n" +
+                "        for dx, dy, act in [(0,-1,\"MOVE_UP\"), (0,1,\"MOVE_DOWN\"), (-1,0,\"MOVE_LEFT\"), (1,0,\"MOVE_RIGHT\")]:\n" +
+                "            nx, ny = x + dx, y + dy\n" +
+                "            \n" +
+                "            if 0 <= nx < board_size and 0 <= ny < board_size:\n" +
+                "                if (nx, ny) not in visited and (nx, ny) not in wall_set:\n" +
+                "                    visited.add((nx, ny))\n" +
+                "                    q.append((nx, ny, path + [act]))\n" +
+                "                    \n" +
+                "    return \"STAY\"\n" +
                 "\n" +
                 "def main():\n" +
                 "    while True:\n" +
                 "        try:\n" +
                 "            line = sys.stdin.readline()\n" +
                 "            if not line: break\n" +
-                "            \n" +
                 "            state = json.loads(line)\n" +
-                "            my_x, my_y = state['my_pos']\n" +
-                "            coin_x, coin_y = state['coin_pos']\n" +
                 "            \n" +
-                "            action = \"STAY\"\n" +
-                "            \n" +
-                "            if coin_x != -1:\n" +
-                "                if my_x < coin_x: action = \"MOVE_RIGHT\"\n" +
-                "                elif my_x > coin_x: action = \"MOVE_LEFT\"\n" +
-                "                elif my_y < coin_y: action = \"MOVE_DOWN\"\n" +
-                "                elif my_y > coin_y: action = \"MOVE_UP\"\n" +
-                "            \n" +
+                "            # [수정 포인트] coin_pos 대신 coins 리스트를 전달\n" +
+                "            action = get_next_move(state['my_pos'], state['coins'], state.get('walls', []), state['board_size'])\n" +
                 "            print(action)\n" +
                 "            sys.stdout.flush()\n" +
                 "        except:\n" +
