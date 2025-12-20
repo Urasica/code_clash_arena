@@ -1,13 +1,100 @@
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+/* src/index.css */
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;700&family=Orbitron:wght@400;700;900&display=swap');
+
+:root {
+  --bg-color: #0a0e17;
+  --panel-bg: #151a25;
+  --primary: #00f0ff; /* Neon Cyan */
+  --secondary: #ff00aa; /* Neon Pink */
+  --text-main: #e0e6ed;
+  --text-dim: #94a3b8;
+  --border-color: #334155;
+  --success: #00ff9d;
+  --danger: #ff4d4d;
 }
 
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+body {
+  margin: 0;
+  font-family: 'Fira Code', monospace; /* 코딩 폰트 기본 */
+  background-color: var(--bg-color);
+  color: var(--text-main);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* === 공통 UI 컴포넌트 === */
+.cyber-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.cyber-title {
+  font-family: 'Orbitron', sans-serif; /* SF 게임 폰트 */
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  background: linear-gradient(90deg, var(--primary), var(--secondary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
+}
+
+.glass-panel {
+  background: rgba(21, 26, 37, 0.8);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  padding: 20px;
+}
+
+.cyber-button {
+  background: transparent;
+  border: 2px solid var(--primary);
+  color: var(--primary);
+  padding: 10px 20px;
+  font-family: 'Orbitron', sans-serif;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  position: relative;
+  overflow: hidden;
+}
+
+.cyber-button:hover:not(:disabled) {
+  background: var(--primary);
+  color: #000;
+  box-shadow: 0 0 15px var(--primary);
+}
+
+.cyber-button.secondary {
+  border-color: var(--secondary);
+  color: var(--secondary);
+}
+
+.cyber-button.secondary:hover:not(:disabled) {
+  background: var(--secondary);
+  box-shadow: 0 0 15px var(--secondary);
+}
+
+.cyber-button:disabled {
+  border-color: #555;
+  color: #555;
+  cursor: not-allowed;
+}
+
+.cyber-input {
+  width: 100%;
+  background: #0d1117;
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  padding: 10px;
+  font-family: 'Fira Code', monospace;
+  border-radius: 4px;
+}
+
+.cyber-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 5px rgba(0, 240, 255, 0.3);
 }

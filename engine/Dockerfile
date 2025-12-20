@@ -1,21 +1,25 @@
-# 베이스 이미지: 가볍고 만만한 Ubuntu 기반
+# Dockerfile
 FROM ubuntu:22.04
 
-# 패키지 설치 시 상호작용 방지 (Timezone 설정 등 무시)
 ENV DEBIAN_FRONTEND=noninteractive
 
-# 1. 패키지 리스트 업데이트 및 필수 유틸 설치
+# 필수 유틸 및 언어별 컴파일러/런타임 설치
+# - build-essential: gcc, g++, make 등 포함
+# - nodejs, npm: JavaScript 실행용
 RUN apt-get update && apt-get install -y \
-    python3 \
-    python3-pip \
+    python3 python3-pip \
     openjdk-17-jdk \
+    build-essential \
+    nodejs npm \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. 작업 디렉토리 설정
 WORKDIR /app
 
-# 3. 소스 코드 복사 (현재 폴더의 모든 파일을 컨테이너의 /app으로)
-COPY . /app
+# (옵션) 파이썬 라이브러리가 필요하다면 requirements.txt 복사 후 설치
+# COPY requirements.txt .
+# RUN pip3 install -r requirements.txt
 
-# 4. (옵션) 실행 시 기본 명령어
+COPY . .
+
+# 기본 실행은 파이썬 심판
 CMD ["python3", "referee.py"]

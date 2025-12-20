@@ -1,57 +1,76 @@
 package com.battle.code.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.NoArgsConstructor;
 import org.springframework.stereotype.Service;
 import java.io.*;
 import java.nio.file.*;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
 @NoArgsConstructor
 public class GameService {
+    public Map<String, Object> startMatch() throws IOException, InterruptedException {
+        String matchId = UUID.randomUUID().toString();
+
+        // 폴더 생성
+        Path matchDir = Paths.get(System.getProperty("user.dir"), "temp", matchId).toAbsolutePath();
+        Files.createDirectories(matchDir);
+
+        // Docker 실행 (INIT 모드)
+        // 볼륨 마운트: matchDir -> /app/data (여기에 map.json이 생김)
+        ProcessBuilder pb = new ProcessBuilder(
+                "docker", "run", "--rm",
+                "-v", matchDir.toString().replace("\\", "/") + ":/app/data",
+                "code-battle-engine",
+                "python3", "referee.py", "init" // init 인자 전달
+        );
+
+        // 결과 읽기 (JSON)
+        String output = runProcessAndGetOutput(pb);
+
+        // 프론트엔드에 줄 정보 구성
+        Map<String, Object> response = new HashMap<>();
+        response.put("matchId", matchId);
+        response.put("map", new ObjectMapper().readValue(output, Map.class));
+
+        return response;
+    }
 
     // 게임 실행 메인 메서드
-    public String runMatch(String userCode) throws IOException, InterruptedException {
-        String matchId = UUID.randomUUID().toString();
-    
+    public String runMatch(String matchId, String userCode) throws IOException, InterruptedException {
         // 절대 경로로 변환
-        Path tempDir = Paths.get(System.getProperty("user.dir"), "temp", matchId).toAbsolutePath();
-        Files.createDirectories(tempDir);
+        Path matchDir = Paths.get(System.getProperty("user.dir"), "temp", matchId).toAbsolutePath();
+        if (!Files.exists(matchDir)) {
+            throw new RuntimeException("Match ID not found or expired.");
+        }
 
         // 파일 생성
-        Files.writeString(tempDir.resolve("p1.py"), userCode);
-        Files.writeString(tempDir.resolve("p2.py"), getAiCode());
-
-        // 윈도우 경로 호환성 처리
-        String hostPathForDocker = tempDir.toString().replace("\\", "/");
+        Files.writeString(matchDir.resolve("p1.py"), userCode);
+        Files.writeString(matchDir.resolve("p2.py"), getAiCode());
 
         // ProcessBuilder 실행
         ProcessBuilder pb = new ProcessBuilder(
-            "docker", "run", "--rm",
-            "-v", hostPathForDocker + ":/app/players", // 변환된 경로 사용
-            "code-battle-engine", // 이미지 이름
-            "python3", "referee.py"
+                "docker", "run", "--rm",
+                "-v", matchDir.toString().replace("\\", "/") + ":/app/data",    // map.json 위치
+                "-v", matchDir.toString().replace("\\", "/") + ":/app/players", // 코드 위치
+                "code-battle-engine",
+                "python3", "referee.py", "run" // run 인자 전달
         );
-        
-        pb.redirectErrorStream(true); // 에러 출력을 표준 출력과 합침
-        Process process = pb.start();
 
-        // 결과 읽기 (Python 심판이 print한 JSON 로그 수신)
+        return runProcessAndGetOutput(pb);
+    }
+
+    private String runProcessAndGetOutput(ProcessBuilder pb) throws IOException, InterruptedException {
+        pb.redirectErrorStream(true);
+        Process process = pb.start();
         BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
         StringBuilder output = new StringBuilder();
         String line;
-        while ((line = reader.readLine()) != null) {
-            output.append(line);
-        }
-
-        int exitCode = process.waitFor();
-        if (exitCode != 0) {
-            throw new RuntimeException("Game Engine Failed: " + output.toString());
-        }
-
-        // 뒷정리 (임시 파일 삭제)
-        //deleteDirectory(hostPath);
-
+        while ((line = reader.readLine()) != null) output.append(line);
+        process.waitFor();
         return output.toString();
     }
 
