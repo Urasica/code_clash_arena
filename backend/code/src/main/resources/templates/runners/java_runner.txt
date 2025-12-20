@@ -1,0 +1,67 @@
+import java.util.*;
+import java.io.*;
+import java.util.regex.*;
+
+public class Main {
+
+    // --- [User Code Injection] ---
+    %USER_CODE%
+    // -----------------------------
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+
+        while (true) {
+            String line = br.readLine();
+            if (line == null) break;
+
+            try {
+                int boardSize = parseBoardSize(line);
+                int[] myPos = parsePoint(extractJsonValue(line, "my_pos"));
+                List<int[]> coins = parsePointsList(extractJsonValue(line, "coins"));
+                List<int[]> walls = parsePointsList(extractJsonValue(line, "walls"));
+
+                String action = strategy(myPos, coins, walls, boardSize);
+                System.out.println(action);
+                System.out.flush();
+            } catch (Exception e) {
+                System.out.println("STAY");
+                System.out.flush();
+            }
+        }
+    }
+
+    // --- Robust Parsers ---
+    private static String extractJsonValue(String json, String key) {
+        // "key": [[...]] 또는 "key": [] 또는 "key": 15 등을 모두 잡는 정규식
+        // [Lookbehind] "key": 다음에 오는 대괄호 덩어리나 숫자를 찾음
+        Pattern pattern = Pattern.compile("\"" + key + "\":\\s*(\\[.*?\\]|\\d+)");
+        Matcher matcher = pattern.matcher(json);
+        if (matcher.find()) return matcher.group(1);
+        return "[]";
+    }
+
+    private static int parseBoardSize(String json) {
+        String val = extractJsonValue(json, "board_size");
+        try { return Integer.parseInt(val); } catch(Exception e) { return 15; }
+    }
+
+    private static int[] parsePoint(String arrayStr) {
+        String clean = arrayStr.replaceAll("[\\[\\]\\s]", "");
+        if (clean.isEmpty()) return new int[]{0,0};
+        String[] parts = clean.split(",");
+        if (parts.length < 2) return new int[]{0,0};
+        return new int[]{Integer.parseInt(parts[0]), Integer.parseInt(parts[1])};
+    }
+
+    private static List<int[]> parsePointsList(String listStr) {
+        List<int[]> list = new ArrayList<>();
+        // [[1,2], [3,4]] 형태 파싱
+        Pattern p = Pattern.compile("\\[(\\d+),\\s*(\\d+)\\]");
+        Matcher m = p.matcher(listStr);
+        while (m.find()) {
+            list.add(new int[]{Integer.parseInt(m.group(1)), Integer.parseInt(m.group(2))});
+        }
+        return list;
+    }
+}

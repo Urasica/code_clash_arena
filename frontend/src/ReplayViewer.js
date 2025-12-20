@@ -1,183 +1,226 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 
-// 내부 렌더링용 해상도 (화면 크기와 무관하게 고화질 유지)
-const RENDER_CELL_SIZE = 40; 
+// --- Helper Functions (Drawing Logic) ---
+const drawGrid = (ctx, size, width, height) => {
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 1;
+  const cellSize = width / size;
 
+  for (let x = 0; x <= size; x++) {
+    ctx.beginPath();
+    ctx.moveTo(x * cellSize, 0);
+    ctx.lineTo(x * cellSize, height);
+    ctx.stroke();
+  }
+  for (let y = 0; y <= size; y++) {
+    ctx.beginPath();
+    ctx.moveTo(0, y * cellSize);
+    ctx.lineTo(width, y * cellSize);
+    ctx.stroke();
+  }
+};
+
+const drawWalls = (ctx, walls, cellSize) => {
+  ctx.fillStyle = '#444'; 
+  walls.forEach(([x, y]) => {
+    ctx.fillRect(x * cellSize + 1, y * cellSize + 1, cellSize - 2, cellSize - 2);
+    ctx.strokeStyle = '#666';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x * cellSize + 1, y * cellSize + 1, cellSize - 2, cellSize - 2);
+  });
+};
+
+const drawCoins = (ctx, coins, cellSize, turn) => {
+  coins.forEach(([x, y]) => {
+    const glow = Math.sin(Date.now() / 200) * 5 + 10;
+    ctx.shadowBlur = glow;
+    ctx.shadowColor = '#ffd700';
+    ctx.fillStyle = '#ffd700';
+    ctx.beginPath();
+    ctx.arc(x * cellSize + cellSize / 2, y * cellSize + cellSize / 2, cellSize / 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  });
+};
+
+const drawPlayers = (ctx, p1, p2, cellSize) => {
+  if (p1.alive) {
+    ctx.fillStyle = '#00ffff';
+    ctx.shadowBlur = 15;
+    ctx.shadowColor = '#00ffff';
+    ctx.fillRect(p1.pos[0] * cellSize + 2, p1.pos[1] * cellSize + 2, cellSize - 4, cellSize - 4);
+    ctx.shadowBlur = 0;
+  }
+  if (p2.alive) {
+    ctx.fillStyle = '#ff00ff';
+    ctx.shadowBlur = 15;
+    ctx.shadowColor = '#ff00ff';
+    ctx.fillRect(p2.pos[0] * cellSize + 2, p2.pos[1] * cellSize + 2, cellSize - 4, cellSize - 4);
+    ctx.shadowBlur = 0;
+  }
+};
+
+const drawTerritory = (ctx, board, cellSize) => {
+  for (let y = 0; y < board.length; y++) {
+    for (let x = 0; x < board[y].length; x++) {
+      if (board[y][x] === 1) { 
+        ctx.fillStyle = 'rgba(0, 255, 255, 0.2)';
+        ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+      } else if (board[y][x] === 2) { 
+        ctx.fillStyle = 'rgba(255, 0, 255, 0.2)';
+        ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+      }
+    }
+  }
+};
+
+// --- Main Component ---
 const ReplayViewer = ({ gameData }) => {
   const canvasRef = useRef(null);
   const [turn, setTurn] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-
-  useEffect(() => {
-    setTurn(0);
-    setIsPlaying(false);
-  }, [gameData]);
-
+  
   const logs = gameData?.logs || [];
-  const maxTurn = logs.length;
-  const canPlay = maxTurn > 1;
-  const boardSize = logs.length > 0 && logs[0].board_size ? logs[0].board_size : 15;
+  const maxTurn = logs.length > 0 ? logs.length - 1 : 0;
+  const boardSize = logs[0]?.board_size || 15;
 
-  // 1. 그리기 로직
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+  const p1Error = gameData?.p1_error;
+  const p2Error = gameData?.p2_error;
+  
+  // 에러 상황 판별 (로그가 0개거나 0턴뿐인데 에러가 있는 경우)
+  const isCrashed = maxTurn <= 0 && (p1Error || p2Error);
 
-    // [중요] 캔버스 내부 해상도 설정 (고정)
-    canvas.width = boardSize * RENDER_CELL_SIZE;
-    canvas.height = boardSize * RENDER_CELL_SIZE;
+  // [수정] 에러 문구 동적 결정
+  let errorTitle = "SYSTEM ERROR";
+  let errorDesc = "UNKNOWN ERROR OCCURRED";
 
-    // --- [테마 적용] 다크 모드 배경 ---
-    ctx.fillStyle = '#0d1117'; // GitHub Dark Dimmed 느낌의 배경
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // 격자 그리기 (어두운 색)
-    ctx.strokeStyle = '#30363d';
-    ctx.lineWidth = 1;
-    for (let i = 0; i <= boardSize; i++) {
-      ctx.beginPath();
-      ctx.moveTo(i * RENDER_CELL_SIZE, 0);
-      ctx.lineTo(i * RENDER_CELL_SIZE, boardSize * RENDER_CELL_SIZE);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(0, i * RENDER_CELL_SIZE);
-      ctx.lineTo(boardSize * RENDER_CELL_SIZE, i * RENDER_CELL_SIZE);
-      ctx.stroke();
+  if (p1Error) {
+    // 에러 메시지에 'Compilation' 텍스트가 포함되어 있으면 컴파일 에러로 간주
+    if (p1Error.includes("Compilation") || p1Error.includes("SyntaxError")) {
+      errorTitle = "COMPILATION FAILED";
+      errorDesc = "SYNTAX ERROR DETECTED";
+    } else {
+      errorTitle = "RUNTIME ERROR";
+      errorDesc = "CODE CRASHED DURING EXECUTION";
     }
+  } else if (p2Error) {
+    errorTitle = "OPPONENT CRASHED";
+    errorDesc = "AI SYSTEM ERROR";
+  }
 
-    if (logs.length > 0 && turn < logs.length) {
-      const currentLog = logs[turn];
-      const p1 = currentLog.p1.pos;
-      const p2 = currentLog.p2.pos;
-      const coins = currentLog.coins || [];
-      const walls = currentLog.walls || [];
-      const board = currentLog.board || [];
-
-      // 바닥(영역) 그리기 - 네온 투명도 조절
-      for (let y = 0; y < boardSize; y++) {
-        for (let x = 0; x < boardSize; x++) {
-          const owner = board[y]?.[x]; 
-          if (owner === 1) { 
-            drawRect(ctx, x, y, 'rgba(0, 240, 255, 0.25)', true); // P1: Cyan Glow
-          } else if (owner === 2) { 
-            drawRect(ctx, x, y, 'rgba(255, 0, 170, 0.25)', true);  // P2: Pink Glow
-          }
-        }
-      }
-
-      // 벽 그리기 (진한 회색 + 테두리)
-      walls.forEach(wall => {
-        drawRect(ctx, wall[0], wall[1], '#21262d'); // Wall body
-        drawBorder(ctx, wall[0], wall[1], '#484f58'); // Wall border
-      });
-
-      // 코인 그리기 (빛나는 골드)
-      coins.forEach(coin => {
-        // Glow effect
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = 'gold';
-        drawCircle(ctx, coin[0], coin[1], '#ffd700');
-        ctx.shadowBlur = 0; // Reset
-      });
-
-      // P1 (Cyan)
-      if (currentLog.p1.alive) drawRect(ctx, p1[0], p1[1], '#00f0ff');
-      else drawX(ctx, p1[0], p1[1], '#00f0ff');
-
-      // P2 (Pink)
-      if (currentLog.p2.alive) drawRect(ctx, p2[0], p2[1], '#ff00aa');
-      else drawX(ctx, p2[0], p2[1], '#ff00aa');
-    }
-  }, [turn, logs, boardSize]);
-
-  // 재생 로직
+  // Animation Loop
   useEffect(() => {
     let interval;
-    if (isPlaying && turn < maxTurn - 1) {
+    if (isPlaying && turn < maxTurn) {
       interval = setInterval(() => {
-        setTurn((prev) => prev + 1);
-      }, 300);
+        setTurn(prev => {
+          if (prev >= maxTurn) {
+            setIsPlaying(false);
+            return prev;
+          }
+          return prev + 1;
+        });
+      }, 200);
     } else {
       setIsPlaying(false);
     }
     return () => clearInterval(interval);
   }, [isPlaying, turn, maxTurn]);
 
-  // --- Helpers ---
-  const drawRect = (ctx, x, y, color, isFill = false) => {
-    ctx.fillStyle = color;
-    // 꽉 채우거나 약간 여백을 줌
-    const gap = isFill ? 0 : 2;
-    ctx.fillRect(x * RENDER_CELL_SIZE + gap, y * RENDER_CELL_SIZE + gap, RENDER_CELL_SIZE - (gap*2), RENDER_CELL_SIZE - (gap*2));
-  };
+  // Drawing Loop
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || logs.length === 0) return;
 
-  const drawBorder = (ctx, x, y, color) => {
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
-    ctx.strokeRect(x * RENDER_CELL_SIZE + 2, y * RENDER_CELL_SIZE + 2, RENDER_CELL_SIZE - 4, RENDER_CELL_SIZE - 4);
-  };
-  
-  const drawCircle = (ctx, x, y, color) => {
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.arc(x * RENDER_CELL_SIZE + RENDER_CELL_SIZE / 2, y * RENDER_CELL_SIZE + RENDER_CELL_SIZE / 2, RENDER_CELL_SIZE / 3.5, 0, 2 * Math.PI);
-    ctx.fill();
-  };
+    const ctx = canvas.getContext('2d');
+    const size = 500;
+    canvas.width = size;
+    canvas.height = size;
+    
+    const cellSize = size / boardSize;
+    const currentLog = logs[turn];
 
-  const drawX = (ctx, x, y, color) => {
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(x * RENDER_CELL_SIZE + 8, y * RENDER_CELL_SIZE + 8);
-    ctx.lineTo((x + 1) * RENDER_CELL_SIZE - 8, (y + 1) * RENDER_CELL_SIZE - 8);
-    ctx.moveTo((x + 1) * RENDER_CELL_SIZE - 8, y * RENDER_CELL_SIZE + 8);
-    ctx.lineTo(x * RENDER_CELL_SIZE + 8, (y + 1) * RENDER_CELL_SIZE - 8);
-    ctx.stroke();
-  };
+    // Clear Screen
+    ctx.fillStyle = '#111';
+    ctx.fillRect(0, 0, size, size);
+
+    drawGrid(ctx, boardSize, size, size);
+    if (currentLog) {
+      drawTerritory(ctx, currentLog.board, cellSize);
+      drawWalls(ctx, currentLog.walls, cellSize);
+      drawCoins(ctx, currentLog.coins, cellSize, turn);
+      drawPlayers(ctx, currentLog.p1, currentLog.p2, cellSize);
+    }
+  }, [turn, logs, boardSize]);
 
   return (
-    <div style={{ textAlign: 'center', width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ marginBottom: '10px', fontSize: '18px', fontWeight: 'bold', fontFamily: 'Orbitron', color: 'var(--primary)' }}>
-        TURN: <span style={{color: '#fff'}}>{turn}</span> / {maxTurn - 1 > 0 ? maxTurn - 1 : 0}
-      </div>
+    <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
       
-      {/* [핵심 수정] 
-         부모 박스 크기에 맞춰서 100%로 렌더링하되, 
-         aspect-ratio를 1/1로 유지하여 찌그러지지 않게 함 
-      */}
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 0 }}>
-        <canvas 
-          ref={canvasRef} 
-          style={{ 
-            width: '100%', 
-            height: 'auto', 
-            maxWidth: '100%', 
-            maxHeight: '100%',
-            aspectRatio: '1/1', // 정사각형 비율 유지
-            border: '1px solid #30363d',
-            boxShadow: '0 0 20px rgba(0,0,0,0.5)',
-            imageRendering: 'pixelated' // 픽셀 아트처럼 선명하게
-          }}
-        />
+      {/* 1. 상단 상태 표시줄 */}
+      <div style={{ 
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        padding: '0 10px', marginBottom: '10px',
+        fontFamily: 'Orbitron', fontSize: '14px', color: 'var(--text-dim)'
+      }}>
+        <div>
+          {isCrashed ? (
+            <span style={{ color: 'var(--danger)', fontWeight: 'bold' }}>⚠ EXECUTION STOPPED</span>
+          ) : (
+            <span>TURN: <b style={{ color: '#fff' }}>{turn}</b> / {maxTurn}</span>
+          )}
+        </div>
       </div>
-      
-      <div style={{ marginTop: '15px', display: 'flex', justifyContent: 'center', gap: '5px' }}>
-        <button className="cyber-button" style={{padding: '5px 10px', fontSize: '12px'}} onClick={() => setTurn(0)} disabled={!canPlay}>⏮</button>
-        <button className="cyber-button" style={{padding: '5px 10px', fontSize: '12px'}} onClick={() => setTurn(Math.max(0, turn - 1))} disabled={turn === 0}>◀</button>
-        
-        <button 
-          className="cyber-button" 
-          onClick={() => setIsPlaying(!isPlaying)} 
-          disabled={!canPlay || (turn >= maxTurn - 1 && !isPlaying)}
-          style={{ width: '60px', fontWeight: 'bold', color: isPlaying ? 'var(--secondary)' : 'var(--primary)', borderColor: isPlaying ? 'var(--secondary)' : 'var(--primary)' }}
-        >
-          {isPlaying ? '⏸' : '▶'}
-        </button>
-        
-        <button className="cyber-button" style={{padding: '5px 10px', fontSize: '12px'}} onClick={() => setTurn(Math.min(maxTurn - 1, turn + 1))} disabled={turn >= maxTurn - 1}>▶</button>
-        <button className="cyber-button" style={{padding: '5px 10px', fontSize: '12px'}} onClick={() => setTurn(maxTurn - 1)} disabled={!canPlay}>⏭</button>
+
+      {/* 2. 메인 뷰어 영역 */}
+      <div style={{ 
+        flex: 1, position: 'relative', 
+        background: '#0d1117', border: '1px solid #30363d', borderRadius: '4px',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden'
+      }}>
+        <canvas ref={canvasRef} style={{ width: '100%', height: 'auto', maxHeight: '100%', aspectRatio: '1/1' }} />
+
+        {/* [수정] 크래시 오버레이 메시지 변경 */}
+        {isCrashed && (
+          <div style={{
+            position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+            background: 'rgba(0, 0, 0, 0.85)', backdropFilter: 'blur(4px)',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            zIndex: 10
+          }}>
+            <div style={{ fontSize: '48px', marginBottom: '16px' }}>💥</div>
+            
+            <h2 style={{ 
+              color: 'var(--danger)', margin: '0 0 10px 0', 
+              fontFamily: 'Orbitron', letterSpacing: '2px', textAlign: 'center'
+            }}>
+              {errorTitle}
+            </h2>
+            
+            <div style={{ color: '#aaa', fontSize: '14px', textAlign: 'center' }}>
+              {errorDesc}
+            </div>
+            
+            <div style={{ 
+              marginTop: '20px', padding: '8px 16px', 
+              border: '1px solid var(--danger)', color: 'var(--danger)', 
+              fontSize: '12px', borderRadius: '20px', cursor: 'pointer'
+            }}>
+              CHECK ERROR LOG BELOW ⬇
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* 3. 컨트롤러 (정상일 때만 표시) */}
+      {!isCrashed && (
+        <div style={{ 
+          marginTop: '15px', display: 'flex', gap: '10px', justifyContent: 'center' 
+        }}>
+           <button onClick={() => setTurn(Math.max(0, turn - 1))} className="cyber-button icon">⏮︎</button>
+           <button onClick={() => setIsPlaying(!isPlaying)} className="cyber-button icon">{isPlaying ? '❚❚' : '▶'}</button>
+           <button onClick={() => setTurn(Math.min(maxTurn, turn + 1))} className="cyber-button icon">⏭︎</button>
+        </div>
+      )}
     </div>
   );
 };

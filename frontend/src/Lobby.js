@@ -1,7 +1,14 @@
 // src/Lobby.js
-import React from 'react';
+import React, { useState } from 'react';
 
 const Lobby = ({ onStartGame }) => {
+  const [difficulty, setDifficulty] = useState('normal'); 
+
+  const handleStart = () => {
+    // 부모 컴포넌트에 선택한 난이도 전달
+    onStartGame(difficulty);
+  };
+
   return (
     <div className="cyber-container" style={{ textAlign: 'center', marginTop: '50px' }}>
       <h1 className="cyber-title" style={{ fontSize: '4rem', marginBottom: '10px' }}>
@@ -23,12 +30,18 @@ const Lobby = ({ onStartGame }) => {
           </p>
           <div style={{ marginTop: '20px' }}>
             <label style={{ display: 'block', marginBottom: '5px', fontSize: '12px' }}>DIFFICULTY</label>
-            <select className="cyber-input" style={{ marginBottom: '15px' }}>
-              <option>Easy (Random)</option>
-              <option>Normal (Greedy)</option>
-              <option>Hard (BFS/DFS)</option>
+            <select 
+              className="cyber-input" 
+              style={{ marginBottom: '15px' }}
+              value={difficulty}
+              onChange={(e) => setDifficulty(e.target.value)}
+            >
+              {/* value 값은 백엔드 파일명(easy, normal, hard)과 일치해야 함 */}
+              <option value="easy">Easy (Random)</option>
+              <option value="normal">Normal (Greedy)</option>
+              <option value="hard">Hard (BFS/DFS)</option>
             </select>
-            <button className="cyber-button" style={{ width: '100%' }} onClick={onStartGame}>
+            <button className="cyber-button" style={{ width: '100%' }} onClick={handleStart}>
               START MATCH
             </button>
           </div>
