@@ -40,7 +40,11 @@ const GameArena = ({ onBack, difficulty }) => {
   const handleStartMatch = async () => {
     setLoading(true);
     try {
-      const res = await axios.post('http://localhost:8080/api/match/land-grab/start');
+      const res = await axios.post(
+        'http://localhost:8080/api/match/land-grab/start', 
+        {},
+        { withCredentials: true }
+      );
       const { matchId, map } = res.data;
       setMatchId(matchId);
 
@@ -58,7 +62,13 @@ const GameArena = ({ onBack, difficulty }) => {
       setStatus('ready');
       setTimeLeft(600);
     } catch (err) {
-      alert("Error: " + err.message);
+      // [수정] 401 에러(인증 실패) 처리
+      if (err.response && err.response.status === 401) {
+        alert("세션이 만료되었습니다. 다시 로그인해주세요.");
+        onBack(); // 로비로 튕겨내기
+      } else {
+        alert("Error: " + (err.response?.data?.error || err.message));
+      }
     }
     setLoading(false);
   };
@@ -76,7 +86,9 @@ const GameArena = ({ onBack, difficulty }) => {
         matchId: matchId,
         userCode: userCode,
         language: language
-      });
+      },
+      { withCredentials: true }
+      );
 
       // 컴파일 에러가 있으면 여기서 중단
       if (compileRes.data.status === 'error') {
@@ -93,7 +105,9 @@ const GameArena = ({ onBack, difficulty }) => {
         userCode: userCode,
         language: language,
         difficulty: difficulty
-      });
+      },
+      { withCredentials: true }
+      );
       
       setGameData(runRes.data);
       setStatus('finished');
@@ -218,7 +232,7 @@ const GameArena = ({ onBack, difficulty }) => {
             ) : (
               <div style={{ color: '#555', fontFamily: 'Orbitron', textAlign: 'center' }}>
                 <div style={{fontSize: '40px', marginBottom: '10px'}}>📡</div>
-                AWAITING SIGNAL ...
+                맵 생성을 누르면 시작합니다...
               </div>
             )}
           </div>
