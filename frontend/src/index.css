@@ -74,6 +74,7 @@ body {
 
 .cyber-button.secondary:hover:not(:disabled) {
   background: var(--secondary);
+  color: #000;
   box-shadow: 0 0 15px var(--secondary);
 }
 

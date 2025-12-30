@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios'; // axios import 확인
+import axios from 'axios';
 import Lobby from './Lobby';
 import GameArena from './GameArena';
 import LoginPage from './LoginPage';
@@ -9,38 +9,65 @@ function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [difficulty, setDifficulty] = useState('normal');
   const [userInfo, setUserInfo] = useState(null); // 유저 정보 저장 (닉네임 등)
+  const [matchData, setMatchData] = useState(null); // PvP 매치 정보
 
-  // [핵심] 앱 로드 시 세션(쿠키) 확인 로직
   useEffect(() => {
+     // 1. [New] 구글 로그인 리다이렉트 처리 (URL 파라미터 확인)
+     const params = new URLSearchParams(window.location.search);
+     const userIdParam = params.get("userId");
+     const tokenParam = params.get("accessToken");
+
+     if (userIdParam) {
+         // URL에 userId가 있으면 저장 (구글 로그인 직후)
+         localStorage.setItem("userId", userIdParam);
+         localStorage.setItem("token", tokenParam);
+         console.log("🔑 [Google Login] User ID saved:", userIdParam);
+         
+         // URL 파라미터 제거 (깔끔하게)
+         window.history.replaceState({}, document.title, "/");
+     }
+
+     // 2. 세션(쿠키) 확인 로직
      const checkLoginStatus = async () => {
          try {
-             // 쿠키(HttpOnly)는 JS로 못 읽으므로, 백엔드에 "나 누구야?"라고 물어봄
              const res = await axios.get('http://localhost:8080/api/auth/me', {
-                 withCredentials: true // [필수] 쿠키를 실어 보내야 함
+                 withCredentials: true 
              });
 
              if (res.status === 200 && res.data.userId) {
                  console.log("Session Restored:", res.data);
                  setIsLoggedIn(true);
                  setUserInfo(res.data);
+                 
+                 // [보완] 세션 확인 시에도 localStorage 동기화 (새로고침 대비)
+                 if (!localStorage.getItem("userId")) {
+                     localStorage.setItem("userId", res.data.userId);
+                 }
              }
          } catch (err) {
-             // 401 Unauthorized 등 에러 -> 로그인 안 된 상태 (조용히 무시)
              console.log("Not logged in");
              setIsLoggedIn(false);
              setUserInfo(null);
+             // 로그아웃 상태면 스토리지도 정리
+             localStorage.removeItem("token");
+             localStorage.removeItem("userId");
          }
      };
 
      checkLoginStatus();
-  }, []); // 빈 배열: 최초 1회 실행
+  }, []); 
 
   const handleLoginSuccess = async () => {
-    // 로그인 직후 정보 갱신을 위해 다시 호출 (또는 로그인 API 응답을 바로 써도 됨)
     try {
         const res = await axios.get('http://localhost:8080/api/auth/me', { withCredentials: true });
         setIsLoggedIn(true);
         setUserInfo(res.data);
+        
+        // [보완] 일반 로그인 성공 시에도 저장
+        if (res.data.userId) {
+            localStorage.setItem("userId", res.data.userId);
+        }
+        
         setView('lobby'); 
     } catch(e) {
         console.error("Login verification failed");
@@ -53,15 +80,24 @@ function App() {
     } catch (err) {
       console.error("Logout request failed", err);
     } finally {
-      // 성공하든 실패하든 클라이언트 상태는 초기화
       setIsLoggedIn(false);
       setUserInfo(null);
+      localStorage.removeItem("token");
+      localStorage.removeItem("userId"); // [추가] 로그아웃 시 삭제
       setView('lobby'); 
     }
   };
 
-  const handleStartGameRequest = (selectedDifficulty) => {
+  const handleStartGameRequest = (selectedDifficulty, pvpData = null) => {
     setDifficulty(selectedDifficulty);
+    
+    if (pvpData) {
+        setMatchData(pvpData); 
+        setDifficulty('pvp'); 
+    } else {
+        setMatchData(null);
+    }
+    
     setView('arena');
   };
 
@@ -87,6 +123,7 @@ function App() {
       {view === 'arena' && (
         <GameArena 
           difficulty={difficulty} 
+          matchData={matchData} 
           onBack={() => setView('lobby')} 
         />
       )}

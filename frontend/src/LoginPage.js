@@ -13,23 +13,42 @@ const LoginPage = ({ onLoginSuccess, onBack }) => {
   const handleLocalAuth = async () => {
     try {
       const endpoint = mode === 'login' ? '/api/auth/login' : '/api/auth/signup';
-      await axios.post(`http://localhost:8080${endpoint}`, formData, { withCredentials: true });
       
-      if (mode === 'login') onLoginSuccess();
+      // 1. [수정] 응답 객체(response)를 변수에 저장
+      const response = await axios.post(`http://localhost:8080${endpoint}`, formData, { withCredentials: true });
+      
+      if (mode === 'login') {
+          // 2. [추가] 응답 데이터에 userId가 있으면 로컬 스토리지에 저장
+          if (response.data.userId) localStorage.setItem('userId', response.data.userId);
+          if (response.data.accessToken) localStorage.setItem('token', response.data.accessToken);
+          
+          onLoginSuccess();
+      }
       else {
         alert("회원가입 성공! 로그인해주세요.");
         setMode('login');
       }
     } catch (err) {
-      alert("Error: " + (err.response?.data || err.message));
+      // 에러 메시지가 객체로 올 경우를 대비해 약간 보완
+      const errorMsg = err.response?.data?.message || err.response?.data || err.message;
+      alert("Error: " + errorMsg);
     }
   };
 
   const handleGuestLogin = async () => {
     try {
-      await axios.post('http://localhost:8080/api/auth/guest', {}, { withCredentials: true });
+      // 1. [수정] 응답 결과를 'response' 변수에 저장
+      const response = await axios.post('http://localhost:8080/api/auth/guest', {}, { withCredentials: true });
+      
+      // 2. [추가] 응답 데이터에서 userId를 꺼내 localStorage에 저장
+      if (response.data && response.data.userId) {
+          localStorage.setItem('userId', response.data.userId);
+          console.log("User ID saved:", response.data.userId);
+      }
+
       onLoginSuccess();
     } catch (err) {
+      console.error(err);
       alert("Guest Login Failed");
     }
   };

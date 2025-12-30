@@ -1,6 +1,7 @@
 package com.battle.code.controller;
 
 import com.battle.code.domain.User;
+import com.battle.code.dto.LoginRequestDto;
 import com.battle.code.repository.UserRepository;
 import com.battle.code.service.AuthService;
 import com.battle.code.security.JwtTokenProvider;
@@ -11,6 +12,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 
@@ -22,33 +25,61 @@ public class AuthController {
     private final AuthService authService;
     private final JwtTokenProvider jwtTokenProvider;
     private final UserRepository userRepository;
+    private static final Logger log =
+            LoggerFactory.getLogger(AuthController.class);
 
-    // 1. 일반 회원가입
+    // 일반 회원가입
     @PostMapping("/signup")
     public ResponseEntity<?> signup(@RequestBody Map<String, String> body) {
-        authService.signup(body.get("username"), body.get("password"), body.get("nickname"));
+        String username = body.get("username");
+        String nickname = body.get("nickname");
+
+        log.info("[SIGNUP] Request - username={}, nickname={}", username, nickname);
+
+        authService.signup(username, body.get("password"), nickname);
+
+        log.info("[SIGNUP] Success - username={}", username);
         return ResponseEntity.ok("Signup Success");
     }
 
-    // 2. 일반 로그인
+    // 일반 로그인
     @PostMapping("/login")
-    public ResponseEntity<?> login(@RequestBody Map<String, String> body, HttpServletResponse response) {
-        String token = authService.login(body.get("username"), body.get("password"));
+    public ResponseEntity<?> login(@RequestBody LoginRequestDto request, HttpServletResponse response) {
+        log.info("[LOGIN] Attempt - username={}", request.getUsername());
+
+        // AuthService에서 유저 검증 후 User 객체 반환
+        User user = authService.login(request.getUsername(), request.getPassword());
+
+        // 토큰 생성 및 쿠키 설정
+        String token = jwtTokenProvider.createToken(user.getId(), user.getRole().name());
         setCookie(response, token);
-        return ResponseEntity.ok("Login Success");
+
+        log.info("[LOGIN] Success - username={}, userId={}", user.getUsername(), user.getId());
+
+        return ResponseEntity.ok(Map.of(
+                "message", "Login Success",
+                "userId", user.getId(),
+                "nickname", user.getNickname(),
+                "accessToken", token
+        ));
     }
 
-    // 3. 게스트 로그인
+    // 게스트 로그인
     @PostMapping("/guest")
     public ResponseEntity<?> guestLogin(HttpServletResponse response) {
+        log.info("[GUEST_LOGIN] Attempt");
+
         User guest = authService.loginAsGuest();
-        // 게스트용 토큰 생성 (AuthService나 Provider 통해)
         String token = jwtTokenProvider.createToken(guest.getId(), "GUEST");
         setCookie(response, token);
 
+        log.info("[GUEST_LOGIN] Success - userId={}, nickname={}",
+                guest.getId(), guest.getNickname());
+
         return ResponseEntity.ok(Map.of(
                 "nickname", guest.getNickname(),
-                "userId", guest.getId()
+                "userId", guest.getId(),
+                "accessToken", token
         ));
     }
 
@@ -61,17 +92,23 @@ public class AuthController {
         response.addCookie(cookie);
     }
 
+    // 로그인 상태 확인
     @GetMapping("/me")
     public ResponseEntity<?> getMyInfo(@AuthenticationPrincipal UserDetails userDetails) {
         if (userDetails == null) {
+            log.warn("[ME] Unauthorized access");
             return ResponseEntity.status(401).body("Unauthorized");
         }
 
-        // CustomUserDetailsService에서 username을 userId(String)로 가져오기
         Long userId = Long.parseLong(userDetails.getUsername());
 
+        log.debug("[ME] Request - userId={}", userId);
+
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> {
+                    log.error("[ME] User not found - userId={}", userId);
+                    return new RuntimeException("User not found");
+                });
 
         return ResponseEntity.ok(Map.of(
                 "userId", user.getId(),
@@ -81,14 +118,18 @@ public class AuthController {
         ));
     }
 
+    // 로그아웃
     @PostMapping("/logout")
     public ResponseEntity<?> logout(HttpServletResponse response) {
+        log.info("[LOGOUT] Request");
+
         Cookie cookie = new Cookie("accessToken", null);
         cookie.setHttpOnly(true);
         cookie.setPath("/");
-        cookie.setMaxAge(0); // 수명을 0으로 설정하여 즉시 삭제
+        cookie.setMaxAge(0);
         response.addCookie(cookie);
 
+        log.info("[LOGOUT] Success");
         return ResponseEntity.ok("Logout Success");
     }
 }

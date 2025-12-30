@@ -15,50 +15,46 @@ COMPILE_TIMEOUT = 10
 
 def prepare_player(player_prefix):
     """
-    언어별 실행 커맨드 생성 및 컴파일 수행 (Timeout 방어 적용)
+    폴더 격리 방식 적용: /app/players/{p1|p2}/Main.java 등을 찾음
     """
+    # 플레이어별 서브 디렉토리 경로 (예: /app/players/p1)
+    player_dir = os.path.join(PLAYERS_DIR, player_prefix)
+    
     try:
-        # 1. Java (Main.java)
-        if player_prefix == "p1" and os.path.exists(os.path.join(PLAYERS_DIR, "Main.java")):
-            java_src = os.path.join(PLAYERS_DIR, "Main.java")
+        # 1. Java (Main.java가 서브 폴더에 있음)
+        java_src = os.path.join(player_dir, "Main.java")
+        if os.path.exists(java_src):
             compile_cmd = ["javac", java_src]
-            # [방어] timeout 추가
             result = subprocess.run(compile_cmd, capture_output=True, text=True, timeout=COMPILE_TIMEOUT)
+            
             if result.returncode != 0:
                 raise Exception(f"[Java Compilation Error]\n{result.stderr}")
-            return ["java", "-cp", PLAYERS_DIR, "Main"]
+            
+            # [중요] 실행 시 Classpath(-cp)를 해당 폴더로 지정
+            return ["java", "-cp", player_dir, "Main"]
 
-        # 2. C++ (p1.cpp)
-        cpp_src = os.path.join(PLAYERS_DIR, f"{player_prefix}.cpp")
+        # 2. C++ (p1.cpp가 서브 폴더에 있음)
+        cpp_src = os.path.join(player_dir, f"{player_prefix}.cpp")
         if os.path.exists(cpp_src):
-            out_file = os.path.join(PLAYERS_DIR, f"{player_prefix}.out")
+            out_file = os.path.join(player_dir, f"{player_prefix}.out") # 실행 파일도 그 안에 생성
             compile_cmd = ["g++", cpp_src, "-o", out_file]
             result = subprocess.run(compile_cmd, capture_output=True, text=True, timeout=COMPILE_TIMEOUT)
+            
             if result.returncode != 0:
                 raise Exception(f"[C++ Compilation Error]\n{result.stderr}")
             return [out_file]
 
-        # 3. C (p1.c)
-        c_src = os.path.join(PLAYERS_DIR, f"{player_prefix}.c")
-        if os.path.exists(c_src):
-            out_file = os.path.join(PLAYERS_DIR, f"{player_prefix}.out")
-            compile_cmd = ["gcc", c_src, "-o", out_file]
-            result = subprocess.run(compile_cmd, capture_output=True, text=True, timeout=COMPILE_TIMEOUT)
-            if result.returncode != 0:
-                raise Exception(f"[C Compilation Error]\n{result.stderr}")
-            return [out_file]
-
-        # 4. Python
-        py_src = os.path.join(PLAYERS_DIR, f"{player_prefix}.py")
+        # 3. Python (p1.py가 서브 폴더에 있음)
+        py_src = os.path.join(player_dir, f"{player_prefix}.py")
         if os.path.exists(py_src):
             return ["python3", py_src]
 
-        # 5. Node.js
-        js_src = os.path.join(PLAYERS_DIR, f"{player_prefix}.js")
+        # 4. Node.js
+        js_src = os.path.join(player_dir, f"{player_prefix}.js")
         if os.path.exists(js_src):
             return ["node", js_src]
 
-        raise Exception(f"Code file not found for {player_prefix}")
+        raise Exception(f"Code file not found for {player_prefix} in {player_dir}")
 
     except subprocess.TimeoutExpired:
         raise Exception(f"Compilation Timed Out ({COMPILE_TIMEOUT}s)")

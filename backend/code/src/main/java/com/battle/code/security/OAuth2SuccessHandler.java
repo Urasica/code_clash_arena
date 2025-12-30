@@ -10,6 +10,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.authentication.SimpleUrlAuthenticationSuccessHandler;
 import org.springframework.stereotype.Component;
+import org.springframework.web.util.UriComponentsBuilder; // [추가]
+
 import java.io.IOException;
 
 @Component
@@ -30,7 +32,7 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
         User user = userRepository.findByUsername(username)
                 .orElseGet(() -> userRepository.save(User.builder()
                         .username(username)
-                        .nickname(email.split("@")[0]) // 이메일 앞부분을 닉네임으로
+                        .nickname(email.split("@")[0])
                         .role(User.Role.USER)
                         .provider("GOOGLE")
                         .providerId(providerId)
@@ -39,14 +41,19 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
         // JWT 생성
         String token = jwtTokenProvider.createToken(user.getId(), user.getRole().name());
 
-        // 쿠키 설정
+        // 쿠키 설정 (HTTP 요청용 - 유지)
         Cookie cookie = new Cookie("accessToken", token);
         cookie.setHttpOnly(true);
         cookie.setPath("/");
-        cookie.setMaxAge(7 * 24 * 60 * 60); // 7일
+        cookie.setMaxAge(7 * 24 * 60 * 60);
         response.addCookie(cookie);
 
-        // 프론트엔드 로비로 리다이렉트
-        getRedirectStrategy().sendRedirect(request, response, "http://localhost:3000/lobby"); // 프론트 주소
+        // 프론트엔드로 리다이렉트
+        String targetUrl = UriComponentsBuilder.fromUriString("http://localhost:3000")
+                .queryParam("accessToken", token)
+                .queryParam("userId", user.getId())
+                .build().toUriString();
+
+        getRedirectStrategy().sendRedirect(request, response, targetUrl);
     }
 }

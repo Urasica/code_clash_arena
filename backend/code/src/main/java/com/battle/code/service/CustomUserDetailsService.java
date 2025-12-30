@@ -20,7 +20,7 @@ public class CustomUserDetailsService implements UserDetailsService {
                 .orElseThrow(() -> new UsernameNotFoundException("User not found"));
 
         String password = user.getPassword();
-        if (password == null) password = ""; // 게스트의 경우 패스워드가 null일 수 있음 -> 빈 문자열 처리
+        if (password == null) password = ""; // 게스트의 경우 패스워드가 null -> 빈 문자열 처리
 
         String role = "USER"; // 기본값
         if (user.getRole() != null) {

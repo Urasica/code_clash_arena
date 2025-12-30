@@ -54,7 +54,7 @@ public class SecurityConfig {
                 )
                 .addFilterBefore(new JwtFilter(jwtTokenProvider), UsernamePasswordAuthenticationFilter.class)
 
-                // [추가] 인증 실패 시 리다이렉트 대신 401 에러 반환 설정
+                // 인증 실패 시 리다이렉트 대신 401 에러 반환
                 .exceptionHandling(exception -> exception
                         .authenticationEntryPoint((request, response, authException) -> {
                             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);

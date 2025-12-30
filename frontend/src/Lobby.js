@@ -1,9 +1,44 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react'; // useRef 추가
+import { Client } from '@stomp/stompjs'; // STOMP 클라이언트
+import SockJS from 'sockjs-client';      // SockJS (WebSocket 호환성)
 
 const Lobby = ({ onStartGame, isLoggedIn, onRequestLogin, userInfo, onLogout }) => {
-  const [selectedGame, setSelectedGame] = useState(null); // 'land-grab' or null
+  const [selectedGame, setSelectedGame] = useState(null);
   const [difficulty, setDifficulty] = useState('normal');
-  const [showLoginModal, setShowLoginModal] = useState(false); // 커스텀 모달 상태
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+
+  const minutes = Math.floor(elapsed / 60);
+  const seconds = elapsed % 60;
+
+  // 매칭 상태
+  const [isSearching, setIsSearching] = useState(false); // 매칭 중 여부
+  const stompClient = useRef(null); // 소켓 클라이언트 객체 유지
+
+  // 컴포넌트 언마운트 시 소켓 연결 해제 (Clean-up)
+  useEffect(() => {
+    return () => {
+      if (stompClient.current) {
+        stompClient.current.deactivate();
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isSearching) {
+      setElapsed(0);
+      return;
+    }
+
+    const start = Date.now();
+
+    const timer = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - start) / 1000));
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [isSearching]);
+
 
   // 게임 시작 핸들러
   const handleStart = () => {
@@ -21,10 +56,84 @@ const Lobby = ({ onStartGame, isLoggedIn, onRequestLogin, userInfo, onLogout }) 
     onRequestLogin(); // 로그인 페이지로 이동
   };
 
+  // ---------------------------------------------------------
+  // [NEW] PvP 매칭 시작 (WebSocket 연결)
+  // ---------------------------------------------------------
+  const handlePvPStart = () => {
+    if (!isLoggedIn) {
+      setShowLoginModal(true);
+      return;
+    }
+
+    setIsSearching(true); // UI를 '매칭 중' 상태로 변경
+
+    const token = localStorage.getItem('token');
+
+    // 1. 소켓 클라이언트 설정
+    const client = new Client({
+      webSocketFactory: () => new SockJS('http://localhost:8080/ws-stomp'), // 백엔드 주소
+      connectHeaders: {
+          Authorization: `Bearer ${token}` 
+      },
+      debug: (str) => {
+        console.log(str);
+      },
+      // 연결 성공 시 실행될 콜백
+      onConnect: () => {
+        console.log("✅ Connected to WebSocket");
+
+        // 2. 내 전용 채널 구독 (매칭 성공 신호 받기 위함)
+        // 주소: /topic/match/{userId}
+        client.subscribe(`/topic/match/${userInfo.userId}`, (message) => {
+          const matchData = JSON.parse(message.body);
+          console.log("🎉 Match Found!", matchData);
+          
+          // 매칭 성공! -> 상태 초기화 후 게임 화면으로 이동
+          setIsSearching(false);
+          stompClient.current.deactivate(); // 소켓 끊고 이동
+          
+          // onStartGame에 매칭 정보를 넘겨줌 (App.js나 GameArena에서 처리 필요)
+          onStartGame('pvp', matchData); 
+        });
+
+        // 3. 대기열 참가 요청 전송
+        client.publish({
+            destination: '/app/match/join',
+            body: JSON.stringify({ userId: userInfo.userId }),
+        });
+      },
+      onStompError: (frame) => {
+        console.error('Broker reported error: ' + frame.headers['message']);
+        console.error('Additional details: ' + frame.body);
+        setIsSearching(false);
+      },
+    });
+
+    // 소켓 활성화
+    client.activate();
+    stompClient.current = client;
+  };
+
+  // ---------------------------------------------------------
+  // [NEW] 매칭 취소
+  // ---------------------------------------------------------
+  const handlePvPCancel = () => {
+    if (stompClient.current && stompClient.current.connected) {
+        // 취소 메시지 전송
+        stompClient.current.publish({
+            destination: '/app/match/cancel',
+            body: JSON.stringify({ userId: userInfo.userId }),
+        });
+        // 연결 끊기
+        stompClient.current.deactivate();
+    }
+    setIsSearching(false);
+  };
+
   // 게임 카드 데이터 (한글화 적용)
   const GAMES = [
     {
-      id: 'land-grab',
+      id: 'land_grab',
       title: 'LAND GRAB',
       desc: '알고리즘으로 영토를 점령하는\n전략 땅따먹기 배틀.',
       status: 'ONLINE',
@@ -68,7 +177,6 @@ const Lobby = ({ onStartGame, isLoggedIn, onRequestLogin, userInfo, onLogout }) 
                     <span style={{ color: 'var(--primary)', fontWeight: 'bold', display: 'block', textShadow: '0 0 5px var(--primary)' }}>
                         🟢 {userInfo?.nickname || 'USER'}
                     </span>
-                    <span style={{ fontSize: '10px', color: '#888' }}>Lv. 1 NOVICE</span>
                 </div>
                 <button 
                     className="cyber-button secondary" 
@@ -140,7 +248,7 @@ const Lobby = ({ onStartGame, isLoggedIn, onRequestLogin, userInfo, onLogout }) 
       )}
 
       {/* STEP 2: 모드(난이도) 선택 화면 */}
-      {selectedGame === 'land-grab' && (
+      {selectedGame === 'land_grab' && (
         <div style={{ maxWidth: '900px', margin: '0 auto', animation: 'fadeIn 0.5s' }}>
           
           {/* 뒤로가기 버튼 */}
@@ -160,7 +268,7 @@ const Lobby = ({ onStartGame, isLoggedIn, onRequestLogin, userInfo, onLogout }) 
               <div style={{ position: 'absolute', top: '-10px', left: '20px', background: 'var(--primary)', color: 'black', padding: '2px 8px', fontSize: '12px', fontWeight: 'bold' }}>
                 추천 모드
               </div>
-               <div style={{ position: 'absolute', top: '15px', right: '15px', fontSize: '24px', opacity: 0.5 }}>🤖</div>
+               <div style={{ position: 'absolute', top: '15px', right: '15px', fontSize: '24px'}}>🤖</div>
               <h2 style={{ color: 'var(--primary)', marginTop: '10px' }}>AI 챌린지</h2>
               <p style={{ fontSize: '14px', color: '#aaa', minHeight: '60px', lineHeight: '1.6' }}>
                 알고리즘 봇과 1:1 대결을 펼칩니다.<br/>
@@ -188,18 +296,37 @@ const Lobby = ({ onStartGame, isLoggedIn, onRequestLogin, userInfo, onLogout }) 
             </div>
 
             {/* 모드 2: PvP (Locked) */}
-            <div className="glass-panel" style={{ textAlign: 'left', borderTop: '4px solid var(--secondary)', opacity: 0.7, position: 'relative', padding: '30px' }}>
-               <div style={{ position: 'absolute', top: '15px', right: '15px', fontSize: '24px', opacity: 0.5 }}>⚔️</div>
+            <div className="glass-panel" style={{ textAlign: 'left', borderTop: '4px solid var(--secondary)', position: 'relative', padding: '30px' }}>
+               <div style={{ position: 'absolute', top: '15px', right: '15px', fontSize: '24px' }}>⚔️</div>
               <h2 style={{ color: 'var(--secondary)', marginTop: '10px' }}>PvP 랭킹전</h2>
               <p style={{ fontSize: '14px', color: '#aaa', minHeight: '60px', lineHeight: '1.6' }}>
                 실시간으로 다른 플레이어와 경쟁합니다.<br/>
                 승리하여 포인트를 획득하고 랭킹을 올리세요.
               </p>
-              <div style={{ marginTop: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '130px', background: 'rgba(0,0,0,0.3)', borderRadius: '4px', border: '1px dashed #555' }}>
-                 <div style={{ textAlign: 'center', color: '#666' }}>
-                   <div style={{ fontSize: '24px', marginBottom: '5px' }}>🔒 잠김</div>
-                   <div style={{ fontSize: '13px' }}>서버 업데이트 중...</div>
-                 </div>
+              
+              <div style={{ marginTop: '20px', background: 'rgba(0,0,0,0.3)', padding: '20px', borderRadius: '4px' }}>
+                <div style={{ marginBottom: '15px', fontSize: '12px', color: '#888' }}>
+                    CURRENT SEASON: <span style={{ color: 'white' }}>ALPHA</span>
+                </div>
+                
+                {/* 매칭 중일 때와 아닐 때 버튼 변경 */}
+                {!isSearching ? (
+                    <button 
+                        className="cyber-button secondary" 
+                        style={{ width: '100%', height: '45px', fontSize: '16px' }} 
+                        onClick={handlePvPStart}
+                    >
+                        매칭 시작
+                    </button>
+                ) : (
+                    <button 
+                        className="cyber-button" 
+                        style={{ width: '100%', height: '45px', fontSize: '16px', background: 'var(--secondary)', borderColor: '#666', color: '#fff' }} 
+                        onClick={handlePvPCancel}
+                    >
+                        매칭 취소 (검색 중...)
+                    </button>
+                )}
               </div>
             </div>
           </div>
@@ -252,6 +379,43 @@ const Lobby = ({ onStartGame, isLoggedIn, onRequestLogin, userInfo, onLogout }) 
         </div>
       )}
 
+      {isSearching && (
+        <div style={{
+            position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
+            background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(3px)',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            zIndex: 2000
+        }}>
+            <div className="glass-panel" style={{ padding: '40px', width: '300px', textAlign: 'center', border: '1px solid var(--secondary)', boxShadow: '0 0 20px var(--secondary)' }}>
+                <div className="spinner" style={{ 
+                    width: '50px', height: '50px', border: '5px solid #333', 
+                    borderTop: '5px solid var(--secondary)', borderRadius: '50%', 
+                    margin: '0 auto 20px', animation: 'spin 1s linear infinite' 
+                }}></div>
+                <h2 style={{ color: 'white', marginBottom: '10px' }}>SEARCHING...</h2>
+                <p style={{ color: '#aaa', fontSize: '14px' }}>상대 할 플레이어를 찾고 있습니다.</p>
+                <div style={{ marginTop: '20px', fontSize: '20px', fontFamily: 'monospace' }}>
+                  {minutes.toString().padStart(2, '0')}:
+                  {seconds.toString().padStart(2, '0')}
+                </div>
+
+                <button 
+                    style={{ 
+                        marginTop: '30px', background: 'transparent', border: 'none', 
+                        color: '#666', textDecoration: 'underline', cursor: 'pointer' 
+                    }}
+                    onClick={handlePvPCancel}
+                >
+                    취소하기
+                </button>
+            </div>
+            
+            {/* CSS Animation injection */}
+            <style>{`
+                @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+            `}</style>
+        </div>
+      )}
     </div>
   );
 };

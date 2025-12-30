@@ -34,15 +34,15 @@ public class AuthService {
     }
 
     // 로그인 (토큰 반환)
-    public String login(String username, String password) {
+    public User login(String username, String password) {
         User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
         if (!passwordEncoder.matches(password, user.getPassword())) {
-            throw new RuntimeException("Invalid password");
+            throw new IllegalArgumentException("Invalid password");
         }
 
-        return jwtTokenProvider.createToken(user.getId(), user.getRole().name());
+        return user; // User 객체 반환
     }
 
     // 게스트로 로그인

@@ -35,7 +35,7 @@ public class JwtFilter extends OncePerRequestFilter {
 
             SecurityContextHolder.clearContext();
 
-            // 명확한 에러 확인을 위해 브라우저에도 500을 던짐 (선택사항)
+            // 에러 확인을 위해 브라우저에도 에러 전달
             response.sendError(500, "Filter Error: " + e.getMessage());
             return; // 필터 체인 중단
         }
