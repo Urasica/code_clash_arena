@@ -23,7 +23,7 @@ Spring Boot 기반의 백엔드와 Docker를 활용한 격리된 코드 실행 �
 
 사용자의 대기열 등록 요청을 Redis를 통해 관리하며, 스케줄러를 통해 적절한 상대를 찾아 게임 세션을 생성합니다.
 
-![매칭 알고리즘](.\image\Matching.png)
+![매칭 알고리즘](./image/Matching.png)
 
 ### 2. 샌드박스 코드 실행 (Safe Execution)
 
@@ -31,10 +31,10 @@ Spring Boot 기반의 백엔드와 Docker를 활용한 격리된 코드 실행 �
 
 
 ## 03 System Architecture
-![Architecture](.\image\Architecture.png)
+![Architecture](./image/Architecture.png)
 
 ### ERD (Entity Relationship Diagram)
-![ERD](.\image\ERD.png)
+![ERD](./image/ERD.png)
 
 사용자, 사용자간 승패 기록, 매치 기록, 리플레이 데이터 관계도입니다.
 
