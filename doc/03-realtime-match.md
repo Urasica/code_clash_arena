@@ -2,21 +2,21 @@
 
 ## 역할
 
-이 영역은 SockJS/STOMP 연결, 사용자별 구독 권한, Redis FIFO 대기열, room 생성, 코드 제출 조정, disconnect 종결과 Redis 정리를 담당한다.
+이 영역은 SockJS/STOMP 인증 연결, 사용자별 구독 권한, Redis 대기열과 room 상태, 비동기 코드 실행, 다중 소켓 reconnect와 종료 정리를 담당한다.
 
-## STOMP 구성
+## 주요 컴포넌트
 
-| 항목 | 값 |
+| 컴포넌트 | 책임 |
 | --- | --- |
-| handshake endpoint | `/ws-stomp` + SockJS |
-| client publish prefix | `/app` |
-| simple broker prefix | `/topic`, `/queue` |
-| 허용 origin | `cca.frontend-url` 단일 origin |
-| inbound interceptor | `StompHandler` |
+| `StompHandler` | CONNECT/SEND/SUBSCRIBE 인증과 topic 접근 제어, 사용자 소켓 등록 |
+| `MatchingService` | 대기열 참가·취소, 원자적 pair 예약, room 원자 생성·복귀 |
+| `MatchingScheduler` | 주기적 pair 요청, 맵 생성, 매칭 결과 발행 |
+| `MatchStateService` | Redis Lua 기반 허용 상태 전이 |
+| `GameSessionService` | 제출 조정, 제한된 worker에 실행 위임, 저장·결과·disconnect 처리 |
+| `WebSocketEventListener` | 세션 종료 시 사용자/매치 소켓 제거와 마지막 소켓 판정 |
+| `MatchExecutionConfig` | bounded 실행 pool과 reconnect grace scheduler |
 
-HTTP handshake에서 JWT cookie가 인증되면 그 `Principal`이 STOMP session에 전달된다. STOMP message body의 userId는 신뢰하지 않는다.
-
-## 메시지 계약
+## STOMP 계약
 
 | 방향 | destination | payload/응답 |
 | --- | --- | --- |
@@ -28,106 +28,74 @@ HTTP handshake에서 JWT cookie가 인증되면 그 `Principal`이 STOMP session
 | server → client | `/topic/game/{matchId}` | `NOTIFICATION`, `RESULT`, `ERROR` |
 | server → client | `/user/queue/errors` | STOMP validation `ERROR` |
 
-`MatchingController`와 `GameSocketController`는 `Principal.name`을 Long user ID로 사용한다.
+handshake endpoint는 `/ws-stomp`, publish prefix는 `/app`, simple broker prefix는 `/topic`, `/queue`다. 허용 origin은 `cca.frontend-url` 한 곳이다. HTTP handshake의 JWT Principal을 사용하며 body의 userId는 신뢰하지 않는다.
 
-client→server payload는 record DTO와 Bean Validation을 사용한다. gameType은 `land_grab`, matchId는 UUID, code는 필수·최대 64,000자, language는 지원하는 5개 값으로 제한한다.
-
-server→client payload도 `MatchSuccessMessage`, `GameNotificationMessage`, `MatchExecutionResultDto`, `GameErrorMessage`로 고정한다. `RESULT`는 `winner`, `final_scores`, `total_turns`, `logs`, `p1_error`, `p2_error`를 사용하고 공개 오류 메시지는 내부 실행 경로와 예외 상세를 노출하지 않는다.
+요청은 record DTO와 Bean Validation을 사용한다. gameType은 `land_grab`, matchId는 UUID, code는 필수·최대 64,000자, language는 지원하는 다섯 값으로 제한한다. 성공·알림·오류도 `MatchSuccessMessage`, `GameNotificationMessage`, `MatchExecutionResultDto`, `GameErrorMessage`로 고정한다.
 
 ## 구독 권한
 
-`StompHandler`는 다음 규칙을 적용한다.
-
 - CONNECT/SEND/SUBSCRIBE에 Principal이 없으면 거부한다.
 - `/topic/match/{userId}`는 Principal과 target userId가 같아야 한다.
-- `/topic/game/{matchId}`는 `match_room:{matchId}`의 p1 또는 p2만 구독할 수 있다.
-- 정의되지 않은 topic 구독은 거부한다.
-- CONNECT 시 `websocket_session:{sessionId}`에 userId를 2시간 저장한다.
+- `/topic/game/{matchId}`는 room의 p1 또는 p2만 구독할 수 있다.
+- 그 밖의 topic 구독은 거부한다.
 
-## Redis 데이터 모델
+## Redis 모델
 
 | key | type | 주요 값 | TTL/정리 |
 | --- | --- | --- | --- |
-| `match_queue:{gameType}` | ZSET | member=userId, score=join epoch ms | cancel/pop |
-| `match_room:{matchId}` | HASH | gameType, p1, p2, mapData, status, code/lang, resolution | 30분 + 종료 삭제 |
-| `user_session:{userId}` | STRING | matchId | 30분 + 종료 삭제 |
-| `websocket_session:{sessionId}` | STRING | userId | 2시간 + disconnect 삭제 |
-| `socket_game:{sessionId}` | STRING | matchId | 30분 + 종료/disconnect 삭제 |
-| `match_socket:{matchId}:{userId}` | STRING | sessionId | 30분 + 종료 삭제 |
+| `match_queue:{gameType}` | ZSET | member=userId, score=join epoch ms | cancel/atomic pop |
+| `match_reservation:{userId}` | STRING | 생성할 matchId | pair 확정까지 1분 |
+| `match_room:{matchId}` | HASH | gameType, p1, p2, mapData, status, code/lang | 30분, 종료 정리 |
+| `user_session:{userId}` | STRING | matchId | 30분, 조건부 정리 |
+| `websocket_session:{sessionId}` | STRING | userId | 2시간, disconnect 정리 |
+| `user_sockets:{userId}` | SET | 모든 STOMP sessionId | 2시간, 마지막 연결 판정 |
+| `socket_game:{sessionId}` | STRING | matchId | 30분, 종료 정리 |
+| `match_sockets:{matchId}:{userId}` | SET | 해당 매치의 모든 sessionId | 30분, 종료 정리 |
 
-`RedisTemplate`은 key/value/hash key/hash value에 모두 String serializer를 사용한다. 복합 map은 service에서 JSON 문자열로 변환한다.
+`RedisTemplate`은 key/value/hash를 String으로 직렬화한다. pair pop은 `ZRANGE + reservation + ZREM`, room 생성은 `HSET + EXPIRE + user_session + reservation 제거`, 복귀는 `reservation 제거 + ZADD`를 각각 하나의 Lua script에서 실행한다. 따라서 여러 scheduler 인스턴스가 같은 사용자를 동시에 가져갈 수 없다. queue join도 기존 session/reservation 확인과 `ZADD NX`가 한 script다.
 
-## 매칭 흐름
-
-```mermaid
-sequenceDiagram
-    participant P1 as Player 1
-    participant P2 as Player 2
-    participant MC as MatchingController
-    participant R as Redis
-    participant S as MatchingScheduler
-    participant E as LandGrabService
-
-    P1->>MC: /app/match/join
-    MC->>R: ZADD queue timestamp
-    P2->>MC: /app/match/join
-    MC->>R: ZADD queue timestamp
-    loop 1초 fixedDelay
-        S->>R: ZCARD, ZPOPMIN × 2
-    end
-    S->>E: generateTransientMap()
-    E-->>S: walls, coins
-    S->>R: HSET match_room + user_session, EXPIRE 30m
-    S-->>P1: /topic/match/P1, myRole=p1
-    S-->>P2: /topic/match/P2, myRole=p2
-```
-
-맵 생성은 최대 3회 시도한다. 실패하면 두 사용자를 원래 ZSET score로 되돌린다.
-
-## 제출과 종결 흐름
+## 상태 머신과 실행 흐름
 
 ```mermaid
 stateDiagram-v2
-    [*] --> PLAYING: room 생성
-    PLAYING --> PLAYING: 한 명 코드 제출
-    PLAYING --> RUNNING: 양쪽 코드 + resolution putIfAbsent 성공
-    PLAYING --> DISCONNECTED: disconnect resolution 획득
-    RUNNING --> COMPLETED: engine + DB + result
-    RUNNING --> FAILED: execution error
-    COMPLETED --> [*]: Redis cleanup
-    FAILED --> [*]: Redis cleanup
-    DISCONNECTED --> [*]: DB + result + cleanup
+    [*] --> WAITING: room 원자 생성
+    WAITING --> READY: 양쪽 코드 확인 + CAS
+    READY --> RUNNING: 실행권 CAS
+    WAITING --> DISCONNECTED: 마지막 소켓 grace 만료
+    READY --> DISCONNECTED: 마지막 소켓 grace 만료
+    RUNNING --> PERSISTING: engine 성공
+    RUNNING --> FAILED: engine/worker 실패
+    PERSISTING --> COMPLETED: DB 저장 성공
+    PERSISTING --> FAILED: DB 저장 실패
+    COMPLETED --> [*]: 결과 발행·정리
+    FAILED --> [*]: 오류 발행·정리
+    DISCONNECTED --> [*]: 기권 저장·발행·정리
 ```
 
-실제 Redis `status`는 room 생성 시 `PLAYING`, 실행 획득 시 `RUNNING`을 기록한다. terminal state는 result 전송 후 room 자체를 삭제하므로 Redis에 보존하지 않는다.
+상태 전이는 `MatchStateService` Lua compare-and-set만 사용한다. 두 제출 요청이 동시에 준비 완료를 관찰해도 `WAITING → READY → RUNNING`을 획득한 요청 하나만 worker에 실행을 넣는다.
 
-`GameSessionService.handleCodeSubmission`은 다음 순서로 동작한다.
+STOMP inbound thread는 코드와 상태만 Redis에 기록하고 Docker/DB 작업은 `matchExecutionExecutor`로 넘긴다. 기본 pool은 core 2, max 4, queue 20이며 포화 시 매치를 `FAILED`로 전이하고 고정 오류를 발행한다. 실행 성공은 `RUNNING → PERSISTING → COMPLETED`, 실패는 허용된 현재 상태에서 `FAILED`로 전이한다.
 
-1. room과 resolution 유무 확인.
-2. Principal user ID를 p1/p2 role로 변환.
-3. `{role}_code`, `{role}_lang` 저장.
-4. `PLAYER_SUBMITTED` notification 발행.
-5. 양쪽 코드가 있으면 hash `resolution=RUNNING`을 `putIfAbsent`로 획득.
-6. Docker PvP 실행, DB 저장, result 발행, key cleanup.
+## 다중 소켓과 disconnect
 
-## Disconnect
+게임 입장 시 사용자별 소켓을 `match_sockets` SET에 추가한다. 한 탭이 닫히면 그 session만 제거하고 다른 session이 남아 있으면 매치를 유지한다. 마지막 session이 사라져도 즉시 기권시키지 않고 기본 5초 grace 뒤 SET을 다시 확인한다. 이 사이 재연결되면 기권은 취소된다.
 
-`WebSocketEventListener`는 `SessionDisconnectEvent`에서 다음을 수행한다.
+grace 뒤에도 소켓이 없을 때만 `WAITING|READY → DISCONNECTED` 전이를 시도한다. 이미 `RUNNING`인 매치는 disconnect가 실행 결과를 덮어쓰지 않는다. 정리는 room, 현재 match를 가리키는 user_session, 양쪽 match_sockets와 연결된 socket_game key를 멱등적으로 제거한다.
 
-1. `websocket_session`으로 userId 조회.
-2. Land Grab queue에서 user 제거.
-3. `socket_game`이 있으면 `GameSessionService.handleDisconnection` 호출.
-4. disconnect가 resolution을 먼저 획득하면 상대 role을 winner로 저장·발행.
-5. session/room 관련 key 정리.
+## 조정 가능한 설정
 
-이미 `RUNNING` resolution이 있으면 disconnect가 실행 결과를 덮어쓰지 않는다.
+| 환경 변수 | 기본값 | 의미 |
+| --- | --- | --- |
+| `MATCH_QUEUE_POLL_INTERVAL` | `1s` | pair 확인 주기 |
+| `MATCH_RECONNECT_GRACE` | `5s` | 마지막 매치 소켓 종료 후 대기 |
+| `MATCH_EXECUTOR_CORE_SIZE` | `2` | 기본 실행 worker 수 |
+| `MATCH_EXECUTOR_MAX_SIZE` | `4` | 최대 실행 worker 수 |
+| `MATCH_EXECUTOR_QUEUE_CAPACITY` | `20` | 대기 가능한 실행 수 |
 
 ## 현재 제약
 
-- scheduler pair 획득과 room 생성이 다중 서버 환경에서 하나의 원자 연산은 아니다.
-- Docker 실행과 DB 저장이 제출 처리 경로에서 동기 실행된다.
-- terminal state와 실패 원인이 Redis에 보존되지 않아 장애 후 복구 정보가 부족하다.
-- 사용자 다중 탭/다중 소켓과 reconnect grace period가 없다.
-- 실 Redis concurrency·disconnect E2E가 없다.
+- simple broker는 단일 애플리케이션 프로세스 메모리 기반이므로 서버 간 STOMP fan-out은 외부 broker relay가 필요하다.
+- reconnect grace 예약은 프로세스 메모리에 있어 해당 서버가 grace 중 재시작되면 예약 작업이 유실될 수 있다.
+- Redis script의 실환경 동시성은 REL-01에서 실제 Redis로 다시 검증한다.
 
-후속 작업은 `MATCH-01`, `MATCH-02`, `MATCH-03`, `REL-01`로 관리한다.
+후속 확장 작업은 `M2-observability`, `M4-scale`에서 관리한다.

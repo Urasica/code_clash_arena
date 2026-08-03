@@ -9,9 +9,9 @@
 | --- | --- | --- | --- |
 | API-01 | 요청·응답 DTO와 단일 오류 계약 | DONE | 없음 |
 | EXEC-02 | AI workspace ownership·TTL·고아 정리 | DONE | API-01 request contract |
-| MATCH-01 | 비동기 실행과 명시적 상태 머신 | READY | API-01 |
-| MATCH-02 | 다중 인스턴스 매칭 원자성 | READY | MATCH-01 state vocabulary |
-| MATCH-03 | 다중 소켓 disconnect·cleanup | READY | MATCH-01 |
+| MATCH-01 | 비동기 실행과 명시적 상태 머신 | DONE | API-01 |
+| MATCH-02 | 다중 인스턴스 매칭 원자성 | DONE | MATCH-01 state vocabulary |
+| MATCH-03 | 다중 소켓 disconnect·cleanup | DONE | MATCH-01 |
 | EXEC-03 | 플레이어·심판 격리와 공정성 | READY | 실행 계약 테스트 |
 | SEC-01 | CSRF·rate limit·운영 비밀 정책 | READY | API-01 |
 | DATA-01 | migration·제약조건·저장 일관성 | READY | 결과 DTO/state |
@@ -35,6 +35,7 @@
 
 - 근거: STOMP inbound 흐름이 Docker/DB를 동기 실행하고, pair 획득은 다중 scheduler에서 원자적이지 않으며, 탭 하나 disconnect가 기권을 만들 수 있다.
 - 범위: `WAITING → READY → RUNNING → PERSISTING → COMPLETED|FAILED|DISCONNECTED`, bounded worker, Redis 원자 pair/transition, socket set와 reconnect grace, 멱등 cleanup.
+- 완료 범위: Lua CAS 상태 전이, bounded 실행 pool, 원자 pair reservation·room 생성·복귀, 사용자/매치별 socket set, 마지막 소켓의 reconnect grace, 현재 매핑만 지우는 멱등 cleanup을 구현했다.
 - 완료 조건: 느린 실행이 inbound thread를 막지 않고 매치당 engine/DB 최대 1회, 한 사용자의 중복 배정 0, 마지막 socket 종료만 기권을 확정한다.
 
 ## EXEC-03 player isolation

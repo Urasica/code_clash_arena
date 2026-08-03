@@ -21,6 +21,13 @@ cca:
     workspace-idle-ttl: ${ENGINE_WORKSPACE_IDLE_TTL:30m}
     workspace-cleanup-initial-delay: ${ENGINE_WORKSPACE_CLEANUP_INITIAL_DELAY:1m}
     workspace-cleanup-interval: ${ENGINE_WORKSPACE_CLEANUP_INTERVAL:5m}
+  match:
+    queue-poll-interval: ${MATCH_QUEUE_POLL_INTERVAL:1s}
+    reconnect-grace: ${MATCH_RECONNECT_GRACE:5s}
+    executor:
+      core-size: ${MATCH_EXECUTOR_CORE_SIZE:2}
+      max-size: ${MATCH_EXECUTOR_MAX_SIZE:4}
+      queue-capacity: ${MATCH_EXECUTOR_QUEUE_CAPACITY:20}
   jwt:
     secret: ${JWT_SECRET:local-development-only-secret-change-me-32-bytes}
     expiration: ${JWT_EXPIRATION:7d}

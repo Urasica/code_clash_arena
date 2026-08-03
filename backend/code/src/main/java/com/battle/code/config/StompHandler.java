@@ -36,6 +36,9 @@ public class StompHandler implements ChannelInterceptor {
                     principal.getName(),
                     SESSION_TTL
             );
+            String userSocketsKey = "user_sockets:" + principal.getName();
+            redisTemplate.opsForSet().add(userSocketsKey, sessionId);
+            redisTemplate.expire(userSocketsKey, SESSION_TTL);
             log.info("[WebSocket] Authenticated user {} (session {})", principal.getName(), sessionId);
         } else if (StompCommand.SEND.equals(accessor.getCommand())) {
             requirePrincipal(accessor);

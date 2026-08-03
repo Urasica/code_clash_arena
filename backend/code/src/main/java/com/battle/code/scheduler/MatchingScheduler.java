@@ -4,10 +4,10 @@ import com.battle.code.dto.LandGrabMapDto;
 import com.battle.code.dto.MatchSuccessMessage;
 import com.battle.code.service.LandGrabService;
 import com.battle.code.service.MatchingService;
+import com.battle.code.service.MatchingService.MatchPair;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -20,92 +20,59 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class MatchingScheduler {
 
+    private static final List<String> TARGET_GAMES = List.of("land_grab");
+
     private final MatchingService matchingService;
     private final LandGrabService landGrabService;
     private final SimpMessagingTemplate messagingTemplate;
     private final ObjectMapper objectMapper;
 
-    private static final List<String> TARGET_GAMES = List.of("land_grab"); // 추가 예정
-
-    @Scheduled(fixedDelay = 1000)
+    @Scheduled(fixedDelayString = "${cca.match.queue-poll-interval:1s}")
     public void checkMatchQueue() {
-        // 등록된 모든 게임 타입에 대해 매칭 시도
-        for (String gameType : TARGET_GAMES) {
-            processMatching(gameType);
-        }
+        TARGET_GAMES.forEach(this::processOnePair);
     }
 
-    private void processMatching(String gameType) {
-        Long size = matchingService.getQueueSize(gameType);
+    private void processOnePair(String gameType) {
+        String matchId = UUID.randomUUID().toString();
+        matchingService.popPair(gameType, matchId)
+                .ifPresent(pair -> createMatch(gameType, matchId, pair));
+    }
 
-        if (size != null && size >= 2) {
-            log.debug("Matching users for [{}]... Queue Size: {}", gameType, size);
-
-            // 유저 꺼내기 (gameType 구분)
-            ZSetOperations.TypedTuple<Object> player1 = matchingService.popUserWithScore(gameType);
-            ZSetOperations.TypedTuple<Object> player2 = matchingService.popUserWithScore(gameType);
-
-            if (player1 != null && player2 != null) {
-                String user1Id = (String) player1.getValue();
-                String user2Id = (String) player2.getValue();
-                String matchId = UUID.randomUUID().toString();
-
-                try {
-                    // 맵 생성
-                    LandGrabMapDto mapData = null;
-                    if ("land_grab".equals(gameType)) {
-                        mapData = generateValidLandGrabMap();
-
-                        if (mapData == null) {
-                            log.error("Failed to generate map for match {}", matchId);
-                            matchingService.returnToQueue(gameType, (String)player1.getValue(), player1.getScore());
-                            matchingService.returnToQueue(gameType, (String)player2.getValue(), player2.getScore());
-                            return;
-                        }
-
-                    } else {
-                        // snake 등 다른 게임 맵 생성 로직
-                    }
-
-                    String mapJson = objectMapper.writeValueAsString(mapData);
-
-                    // Redis 방 생성
-                    matchingService.createMatchRoom(matchId, gameType, user1Id, user2Id, mapJson);
-
-                    // p1에게 전송
-                    MatchSuccessMessage eventP1 = new MatchSuccessMessage(matchId, user1Id, user2Id, mapData, "p1");
-                    messagingTemplate.convertAndSend("/topic/match/" + user1Id, eventP1);
-
-                    // P2에게 전송
-                    MatchSuccessMessage eventP2 = new MatchSuccessMessage(matchId, user1Id, user2Id, mapData, "p2");
-                    messagingTemplate.convertAndSend("/topic/match/" + user2Id, eventP2);
-
-                    log.info("Match Found! Game: {}, ID: {}", gameType, matchId);
-
-                } catch (Exception e) {
-                    log.error("Error during match creation: {}", e.getMessage());
-                    // 에러 시 롤백
-                    matchingService.returnToQueue(gameType, user1Id, player1.getScore());
-                    matchingService.returnToQueue(gameType, user2Id, player2.getScore());
-                }
-
-            } else {
-                // 롤백 (gameType 전달)
-                if (player1 != null) matchingService.returnToQueue(gameType, (String) player1.getValue(), player1.getScore());
-                if (player2 != null) matchingService.returnToQueue(gameType, (String) player2.getValue(), player2.getScore());
+    private void createMatch(String gameType, String matchId, MatchPair pair) {
+        try {
+            LandGrabMapDto mapData = generateValidLandGrabMap();
+            if (mapData == null) {
+                matchingService.returnPair(gameType, pair);
+                return;
             }
+            matchingService.createMatchRoom(
+                    matchId, gameType, pair.p1().userId(), pair.p2().userId(),
+                    objectMapper.writeValueAsString(mapData)
+            );
+            messagingTemplate.convertAndSend(
+                    "/topic/match/" + pair.p1().userId(),
+                    new MatchSuccessMessage(matchId, pair.p1().userId(), pair.p2().userId(), mapData, "p1")
+            );
+            messagingTemplate.convertAndSend(
+                    "/topic/match/" + pair.p2().userId(),
+                    new MatchSuccessMessage(matchId, pair.p1().userId(), pair.p2().userId(), mapData, "p2")
+            );
+            log.info("Match found. game={}, matchId={}", gameType, matchId);
+        } catch (Exception exception) {
+            log.error("Match creation failed for {}", matchId, exception);
+            matchingService.returnPair(gameType, pair);
         }
     }
 
     private LandGrabMapDto generateValidLandGrabMap() {
-        for (int i = 0; i < 3; i++) {
+        for (int attempt = 1; attempt <= 3; attempt++) {
             try {
                 LandGrabMapDto map = landGrabService.generateTransientMap();
-                if (map != null && map.walls() != null && map.coins() != null) {
-                    if (!map.walls().isEmpty()) return map;
+                if (map != null && map.walls() != null && !map.walls().isEmpty() && map.coins() != null) {
+                    return map;
                 }
-            } catch (Exception e) {
-                log.warn("⚠️ Map generation failed (attempt {}): {}", i+1, e.getMessage());
+            } catch (Exception exception) {
+                log.warn("Map generation failed on attempt {}", attempt, exception);
             }
         }
         return null;

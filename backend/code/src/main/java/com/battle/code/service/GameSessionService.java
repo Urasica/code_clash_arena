@@ -3,8 +3,8 @@ package com.battle.code.service;
 import com.battle.code.dto.GameErrorMessage;
 import com.battle.code.dto.GameNotificationMessage;
 import com.battle.code.dto.MatchExecutionResultDto;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
@@ -12,10 +12,14 @@ import org.springframework.stereotype.Service;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
-@Slf4j
 @Service
-@RequiredArgsConstructor
 public class GameSessionService {
 
     private static final Duration SESSION_TTL = Duration.ofMinutes(30);
@@ -24,203 +28,239 @@ public class GameSessionService {
     private final LandGrabService landGrabService;
     private final SimpMessagingTemplate messagingTemplate;
     private final MatchService matchService;
+    private final MatchStateService stateService;
+    private final Executor matchExecutor;
+    private final ScheduledExecutorService reconnectScheduler;
+    private final Duration reconnectGrace;
 
-    // 유저가 코드를 제출했을 때 처리
+    public GameSessionService(
+            RedisTemplate<String, Object> redisTemplate,
+            LandGrabService landGrabService,
+            SimpMessagingTemplate messagingTemplate,
+            MatchService matchService,
+            MatchStateService stateService,
+            @Qualifier("matchExecutionExecutor") Executor matchExecutor,
+            ScheduledExecutorService reconnectScheduler,
+            @Value("${cca.match.reconnect-grace:5s}") Duration reconnectGrace
+    ) {
+        this.redisTemplate = redisTemplate;
+        this.landGrabService = landGrabService;
+        this.messagingTemplate = messagingTemplate;
+        this.matchService = matchService;
+        this.stateService = stateService;
+        this.matchExecutor = matchExecutor;
+        this.reconnectScheduler = reconnectScheduler;
+        this.reconnectGrace = reconnectGrace;
+    }
+
     public void handleCodeSubmission(String matchId, Long userId, String code, String language) {
-        String roomKey = "match_room:" + matchId;
-
-        // 유효성 검사 및 역할(p1/p2) 확인
-        if (!Boolean.TRUE.equals(redisTemplate.opsForHash().hasKey(roomKey, "p1"))) {
-            log.warn("Submission for non-existent or expired match: {}", matchId);
+        String roomKey = roomKey(matchId);
+        if (stateService.current(matchId).filter(MatchStatus.WAITING::equals).isEmpty()) {
             return;
         }
 
-        if (Boolean.TRUE.equals(redisTemplate.opsForHash().hasKey(roomKey, "resolution"))) {
-            log.info("Ignoring submission after match resolution started: {}", matchId);
-            return;
-        }
-
-        String p1IdStr = String.valueOf(redisTemplate.opsForHash().get(roomKey, "p1"));
-        String p2IdStr = String.valueOf(redisTemplate.opsForHash().get(roomKey, "p2"));
-
-        String playerRole; // "p1" or "p2"
-        if (String.valueOf(userId).equals(p1IdStr)) playerRole = "p1";
-        else if (String.valueOf(userId).equals(p2IdStr)) playerRole = "p2";
-        else {
-            log.error("Unknown user {} tried to submit in match {}", userId, matchId);
-            return;
-        }
-
-        // Redis에 코드 저장
-        redisTemplate.opsForHash().put(roomKey, playerRole + "_code", code);
-        redisTemplate.opsForHash().put(roomKey, playerRole + "_lang", language);
-
-        log.info("Code saved for {} in match {}", playerRole, matchId);
-
-        // 상대에게 "제출 완료" 알림 (UI 업데이트용 - role 포함)
-        messagingTemplate.convertAndSend(
-                "/topic/game/" + matchId,
-                GameNotificationMessage.playerSubmitted(playerRole)
-        );
-
-        // 양쪽 다 제출했는지 확인 후 게임 시작
-        boolean p1Ready = redisTemplate.opsForHash().hasKey(roomKey, "p1_code");
-        boolean p2Ready = redisTemplate.opsForHash().hasKey(roomKey, "p2_code");
-
-        if (p1Ready && p2Ready) {
-            Boolean acquired = redisTemplate.opsForHash().putIfAbsent(roomKey, "resolution", "RUNNING");
-            if (Boolean.TRUE.equals(acquired)) {
-                redisTemplate.opsForHash().put(roomKey, "status", "RUNNING");
-                log.info("All players ready in match {}. Starting execution!", matchId);
-                runPvPMatch(matchId, roomKey);
-            } else {
-                log.info("Match {} execution was already started", matchId);
-            }
+        String p1Id = value(roomKey, "p1");
+        String p2Id = value(roomKey, "p2");
+        String role;
+        if (String.valueOf(userId).equals(p1Id)) {
+            role = "p1";
+        } else if (String.valueOf(userId).equals(p2Id)) {
+            role = "p2";
         } else {
-            log.info("Waiting for opponent in match {}...", matchId);
-        }
-    }
-
-    // [정상 종료] 양측 코드 실행 및 결과 처리
-    private void runPvPMatch(String matchId, String roomKey) {
-        try {
-            // Redis에서 실행에 필요한 데이터 꺼내기
-            String p1Code = (String) redisTemplate.opsForHash().get(roomKey, "p1_code");
-            String p2Code = (String) redisTemplate.opsForHash().get(roomKey, "p2_code");
-            String p1Lang = (String) redisTemplate.opsForHash().get(roomKey, "p1_lang");
-            String p2Lang = (String) redisTemplate.opsForHash().get(roomKey, "p2_lang");
-            String mapDataJson = (String) redisTemplate.opsForHash().get(roomKey, "mapData"); // 저장해둔 맵 데이터
-
-            // DB 저장을 위해 ID도 가져옴
-            String p1Id = (String) redisTemplate.opsForHash().get(roomKey, "p1");
-            String p2Id = (String) redisTemplate.opsForHash().get(roomKey, "p2");
-
-            // Docker 엔진 실행 (LandGrabService)
-            MatchExecutionResultDto result = landGrabService
-                    .runPvPMatch(matchId, p1Code, p1Lang, p2Code, p2Lang, mapDataJson)
-                    .asRealtimeResult();
-
-            // [DB 저장] MatchService 호출 (정상 종료)
-            try {
-                matchService.savePvPMatchResult(
-                        matchId,
-                        Long.parseLong(p1Id),
-                        Long.parseLong(p2Id),
-                        result,
-                        p1Code, p1Lang, p2Code, p2Lang
-                );
-                log.info("✅ Match result saved to DB for match {}", matchId);
-            } catch (Exception e) {
-                log.error("❌ Failed to save match result to DB: {}", e.getMessage());
-                // 저장 실패해도 결과 전달을 위해 전송 진행
-            }
-
-            //  결과 전송 (양쪽 유저에게 전송)
-            messagingTemplate.convertAndSend("/topic/game/" + matchId, result);
-
-            // 방 정리
-            cleanupMatch(matchId, p1Id, p2Id);
-
-        } catch (Exception e) {
-            log.error("🔥 PvP Execution Error: {}", e.getMessage());
-            messagingTemplate.convertAndSend(
-                    "/topic/game/" + matchId,
-                    GameErrorMessage.executionFailed()
-            );
-
-            String p1Id = (String) redisTemplate.opsForHash().get(roomKey, "p1");
-            String p2Id = (String) redisTemplate.opsForHash().get(roomKey, "p2");
-            // 에러 시에도 방 정리
-            cleanupMatch(matchId, p1Id, p2Id);
-        }
-    }
-
-    /**
-     * [비정상 종료] 탈주(Disconnect) 처리
-     */
-    public void handleDisconnection(String matchId, String disconnectedUserId) {
-        String roomKey = "match_room:" + matchId;
-
-        if (!Boolean.TRUE.equals(redisTemplate.opsForHash().hasKey(roomKey, "p1"))) {
             return;
         }
 
-        String p1Id = (String) redisTemplate.opsForHash().get(roomKey, "p1");
-        String p2Id = (String) redisTemplate.opsForHash().get(roomKey, "p2");
-
-        if (!disconnectedUserId.equals(p1Id) && !disconnectedUserId.equals(p2Id)) {
-            log.warn("Ignoring disconnect from non-player {} in match {}", disconnectedUserId, matchId);
-            return;
-        }
-
-        Boolean acquired = redisTemplate.opsForHash().putIfAbsent(
-                roomKey,
-                "resolution",
-                "DISCONNECTED:" + disconnectedUserId
+        redisTemplate.opsForHash().put(roomKey, role + "_code", code);
+        redisTemplate.opsForHash().put(roomKey, role + "_lang", language);
+        messagingTemplate.convertAndSend(
+                gameTopic(matchId),
+                GameNotificationMessage.playerSubmitted(role)
         );
-        if (!Boolean.TRUE.equals(acquired)) {
-            log.info("Disconnect ignored because match {} is already resolving", matchId);
+
+        boolean bothReady = Boolean.TRUE.equals(redisTemplate.opsForHash().hasKey(roomKey, "p1_code"))
+                && Boolean.TRUE.equals(redisTemplate.opsForHash().hasKey(roomKey, "p2_code"));
+        if (!bothReady || !stateService.transition(matchId, MatchStatus.READY, MatchStatus.WAITING)) {
+            return;
+        }
+        if (!stateService.transition(matchId, MatchStatus.RUNNING, MatchStatus.READY)) {
             return;
         }
 
-        // 코드 정보 조회 (제출 전 탈주 시 null)
-        String p1Code = (String) redisTemplate.opsForHash().get(roomKey, "p1_code");
-        String p1Lang = (String) redisTemplate.opsForHash().get(roomKey, "p1_lang");
-        String p2Code = (String) redisTemplate.opsForHash().get(roomKey, "p2_code");
-        String p2Lang = (String) redisTemplate.opsForHash().get(roomKey, "p2_lang");
+        try {
+            matchExecutor.execute(() -> runPvPMatch(matchId));
+        } catch (RejectedExecutionException exception) {
+            stateService.transition(matchId, MatchStatus.FAILED, MatchStatus.RUNNING);
+            messagingTemplate.convertAndSend(gameTopic(matchId), GameErrorMessage.executionFailed());
+            cleanupMatch(matchId);
+        }
+    }
 
-        String winnerRole = disconnectedUserId.equals(p1Id) ? "p2" : "p1";
+    private void runPvPMatch(String matchId) {
+        String roomKey = roomKey(matchId);
+        try {
+            String p1Code = requiredValue(roomKey, "p1_code");
+            String p2Code = requiredValue(roomKey, "p2_code");
+            String p1Lang = requiredValue(roomKey, "p1_lang");
+            String p2Lang = requiredValue(roomKey, "p2_lang");
+            String mapDataJson = requiredValue(roomKey, "mapData");
+            String p1Id = requiredValue(roomKey, "p1");
+            String p2Id = requiredValue(roomKey, "p2");
 
-        MatchExecutionResultDto result = MatchExecutionResultDto.disconnected(winnerRole);
+            MatchExecutionResultDto result = landGrabService.runPvPMatch(
+                    matchId, p1Code, p1Lang, p2Code, p2Lang, mapDataJson
+            ).asRealtimeResult();
+            if (!stateService.transition(matchId, MatchStatus.PERSISTING, MatchStatus.RUNNING)) {
+                throw new IllegalStateException("Match state changed before persistence.");
+            }
+            matchService.savePvPMatchResult(
+                    matchId, Long.parseLong(p1Id), Long.parseLong(p2Id), result,
+                    p1Code, p1Lang, p2Code, p2Lang
+            );
+            if (!stateService.transition(matchId, MatchStatus.COMPLETED, MatchStatus.PERSISTING)) {
+                throw new IllegalStateException("Match state changed before completion.");
+            }
+            messagingTemplate.convertAndSend(gameTopic(matchId), result);
+        } catch (Exception exception) {
+            stateService.transition(
+                    matchId,
+                    MatchStatus.FAILED,
+                    MatchStatus.RUNNING,
+                    MatchStatus.PERSISTING
+            );
+            messagingTemplate.convertAndSend(gameTopic(matchId), GameErrorMessage.executionFailed());
+        } finally {
+            cleanupMatch(matchId);
+        }
+    }
 
-        // [DB 저장] 기권패 기록
+    public boolean registerGameSession(String matchId, String sessionId, String userId) {
+        String roomKey = roomKey(matchId);
+        String p1Id = value(roomKey, "p1");
+        String p2Id = value(roomKey, "p2");
+        if (!userId.equals(p1Id) && !userId.equals(p2Id)) {
+            return false;
+        }
+
+        redisTemplate.opsForValue().set("socket_game:" + sessionId, matchId, SESSION_TTL);
+        String socketsKey = socketsKey(matchId, userId);
+        redisTemplate.opsForSet().add(socketsKey, sessionId);
+        redisTemplate.expire(socketsKey, SESSION_TTL);
+        return true;
+    }
+
+    public void handleSocketDisconnection(String matchId, String userId, String sessionId) {
+        String socketsKey = socketsKey(matchId, userId);
+        redisTemplate.opsForSet().remove(socketsKey, sessionId);
+        redisTemplate.delete("socket_game:" + sessionId);
+        if (positive(redisTemplate.opsForSet().size(socketsKey))) {
+            return;
+        }
+        reconnectScheduler.schedule(
+                () -> confirmLastSocketDisconnected(matchId, userId),
+                reconnectGrace.toMillis(),
+                TimeUnit.MILLISECONDS
+        );
+    }
+
+    void confirmLastSocketDisconnected(String matchId, String userId) {
+        if (positive(redisTemplate.opsForSet().size(socketsKey(matchId, userId)))) {
+            return;
+        }
+        handleDisconnection(matchId, userId);
+    }
+
+    public void handleDisconnection(String matchId, String disconnectedUserId) {
+        String roomKey = roomKey(matchId);
+        String p1Id = value(roomKey, "p1");
+        String p2Id = value(roomKey, "p2");
+        if (!disconnectedUserId.equals(p1Id) && !disconnectedUserId.equals(p2Id)) {
+            return;
+        }
+        if (!stateService.transition(
+                matchId,
+                MatchStatus.DISCONNECTED,
+                MatchStatus.WAITING,
+                MatchStatus.READY
+        )) {
+            return;
+        }
+
+        MatchExecutionResultDto result = MatchExecutionResultDto.disconnected(
+                disconnectedUserId.equals(p1Id) ? "p2" : "p1"
+        );
         try {
             matchService.savePvPMatchResult(
                     matchId,
                     Long.parseLong(p1Id),
                     Long.parseLong(p2Id),
                     result,
-                    p1Code, p1Lang, p2Code, p2Lang
+                    value(roomKey, "p1_code"),
+                    value(roomKey, "p1_lang"),
+                    value(roomKey, "p2_code"),
+                    value(roomKey, "p2_lang")
             );
-        } catch (Exception e) {
-            log.error("❌ Failed to save disconnect result: {}", e.getMessage());
+            messagingTemplate.convertAndSend(gameTopic(matchId), result);
+        } finally {
+            cleanupMatch(matchId);
         }
-
-        messagingTemplate.convertAndSend("/topic/game/" + matchId, result);
-        cleanupMatch(matchId, p1Id, p2Id);
     }
 
-    public boolean registerGameSession(String matchId, String sessionId, String userId) {
-        String roomKey = "match_room:" + matchId;
-        String p1Id = String.valueOf(redisTemplate.opsForHash().get(roomKey, "p1"));
-        String p2Id = String.valueOf(redisTemplate.opsForHash().get(roomKey, "p2"));
-        if (!userId.equals(p1Id) && !userId.equals(p2Id)) {
-            log.warn("User {} cannot register a socket for match {}", userId, matchId);
-            return false;
-        }
-
-        redisTemplate.opsForValue().set("socket_game:" + sessionId, matchId, SESSION_TTL);
-        redisTemplate.opsForValue().set("match_socket:" + matchId + ":" + userId, sessionId, SESSION_TTL);
-        return true;
-    }
-
-    // 방 정리 헬퍼 메서드
-    private void cleanupMatch(String matchId, String p1Id, String p2Id) {
-        String roomKey = "match_room:" + matchId;
-        List<String> keys = new ArrayList<>(List.of(
-                roomKey,
-                "user_session:" + p1Id,
-                "user_session:" + p2Id,
-                "match_socket:" + matchId + ":" + p1Id,
-                "match_socket:" + matchId + ":" + p2Id
-        ));
-        for (String playerId : List.of(p1Id, p2Id)) {
-            Object sessionId = redisTemplate.opsForValue().get("match_socket:" + matchId + ":" + playerId);
-            if (sessionId != null) {
-                keys.add("socket_game:" + sessionId);
-            }
-        }
+    private void cleanupMatch(String matchId) {
+        String roomKey = roomKey(matchId);
+        String p1Id = value(roomKey, "p1");
+        String p2Id = value(roomKey, "p2");
+        List<String> keys = new ArrayList<>();
+        keys.add(roomKey);
+        cleanupPlayerMappings(matchId, p1Id, keys);
+        cleanupPlayerMappings(matchId, p2Id, keys);
         redisTemplate.delete(keys);
-        log.info("Match room {} cleaned up.", matchId);
+    }
+
+    private void cleanupPlayerMappings(String matchId, String playerId, List<String> keys) {
+        if (playerId == null) {
+            return;
+        }
+        String userSessionKey = "user_session:" + playerId;
+        if (matchId.equals(redisTemplate.opsForValue().get(userSessionKey))) {
+            keys.add(userSessionKey);
+        }
+        String socketsKey = socketsKey(matchId, playerId);
+        Set<Object> sessionIds = redisTemplate.opsForSet().members(socketsKey);
+        if (sessionIds != null) {
+            sessionIds.stream().filter(Objects::nonNull)
+                    .map(String::valueOf)
+                    .map(sessionId -> "socket_game:" + sessionId)
+                    .forEach(keys::add);
+        }
+        keys.add(socketsKey);
+    }
+
+    private boolean positive(Long value) {
+        return value != null && value > 0;
+    }
+
+    private String requiredValue(String roomKey, String field) {
+        String value = value(roomKey, field);
+        if (value == null) {
+            throw new IllegalStateException("Missing match field: " + field);
+        }
+        return value;
+    }
+
+    private String value(String roomKey, String field) {
+        Object value = redisTemplate.opsForHash().get(roomKey, field);
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private String roomKey(String matchId) {
+        return "match_room:" + matchId;
+    }
+
+    private String socketsKey(String matchId, String userId) {
+        return "match_sockets:" + matchId + ":" + userId;
+    }
+
+    private String gameTopic(String matchId) {
+        return "/topic/game/" + matchId;
     }
 }
