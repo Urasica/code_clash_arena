@@ -1,119 +1,128 @@
-# Code Clash Arena (CCA)
+# Code Clash Arena
 
-**실시간 1:1 알고리즘 전략 배틀 플랫폼**
+사용자가 작성한 Python, Java, C, C++, JavaScript 전략 코드를 격리된 Docker 환경에서 실행해 AI 또는 다른 사용자와 겨루는 실시간 알고리즘 배틀 서비스입니다.
 
-> **"당신의 코드로 전장을 점령하라!"**   
-> 사용자가 작성한 알고리즘 코드로 알고리즘 대결을 펼치는 **코딩 배틀 서비스**입니다.   
-> 단순한 코딩 테스트를 넘어, 전략적 사고와 최적화 능력을 겨뤄볼 수 있습니다.
+## 주요 기능
 
-## 01 프로젝트 설명
+- Land Grab AI 대전과 Redis 기반 1:1 PvP 매칭
+- STOMP WebSocket 실시간 제출 상태·결과 전달
+- Monaco Editor와 턴별 리플레이
+- HttpOnly JWT 쿠키 기반 로컬·게스트·선택적 Google 로그인
+- CPU·메모리·PID·네트워크·실행 시간·출력 크기를 제한한 코드 실행
 
-**Code Clash Arena**는 플레이어가 직접 봇(Bot)의 로직을 코딩하여 상대방과 실시간으로 대결하는 게임 플랫폼입니다.   
-Spring Boot 기반의 백엔드와 Docker를 활용한 격리된 코드 실행 환경(Sandbox)을 통해 안전하고 공정한 대결 환경을 보장합니다.
+## 구성
 
-### 핵심 기능
+```text
+브라우저(React)
+  ├─ REST ───────────────→ Spring Boot ──→ MySQL
+  └─ SockJS/STOMP ───────→ Spring Boot ──→ Redis
+                                  │
+                                  └─ DockerMatchExecutor
+                                       └─ code-battle-engine
+                                            └─ referee.py → Land Grab
+```
 
-* **실시간 1:1 매칭 & 배틀**: WebSocket을 활용한 실시간 게임 플레이
-* **다중 언어 지원**: Python, Java, C, C++, JavaScript 등 주요 언어 지원
-* **전략적 땅따먹기 (Land Grab)**: 단순 문제 풀이가 아닌, 영토를 넓히고 상대를 제압하는 게임형 알고리즘 대결 (더 많은 게임 추가 가능)
-
-## 02 핵심 기능 및 로직
-
-### 1. 실시간 매칭 시스템 (Matchmaking)
-
-사용자의 대기열 등록 요청을 Redis를 통해 관리하며, 스케줄러를 통해 적절한 상대를 찾아 게임 세션을 생성합니다.
-
-![매칭 알고리즘](./image/Matching.png)
-
-### 2. 샌드박스 코드 실행 (Safe Execution)
-
-사용자가 제출한 코드는 **Docker Container** 내부의 격리된 환경에서 실행됩니다. 이를 통해 무한 루프, 시스템 콜 등 악의적이거나 불안정한 코드로부터 서버를 보호합니다.
-
-
-## 03 System Architecture
-![Architecture](./image/Architecture.png)
-
-### ERD (Entity Relationship Diagram)
-![ERD](./image/ERD.png)
-
-사용자, 사용자간 승패 기록, 매치 기록, 리플레이 데이터 관계도입니다.
-
-### Tech Stack
-
-| 분류 | 기술 스택 |
-| --- | --- |
-| **Frontend** | React, Stomp.js, Monaco Editor |
-| **Backend** | Java 17, Spring Boot 3.x, Spring Security (OAuth2/JWT) |
-| **Database** | MySQL, Redis (캐싱 및 대기열 관리) |
-| **Communication** | WebSocket (STOMP), REST API |
-| **DevOps / AI** | Docker (Code Engine), Python (Game Logic Ref) |
-
-## 04 Directory Structure
-
-```bash
+```text
 code_clash_arena/
-├── backend/                  # Spring Boot 서버
-│   ├── src/main/java/.../controller  # REST & Socket Controllers
-│   ├── src/main/java/.../service     # 비즈니스 로직 (Matching, Execution)
-│   ├── src/main/java/.../scheduler   # 매칭 스케줄러
-│   └── src/main/resources/templates  # Code Runners (C, Py, Java...)
-│
-├── frontend/                 # React 웹 클라이언트
-│   ├── src/GameArena.js      # 메인 게임 UI
-│   ├── src/Lobby.js          # 로비 화면 및 매칭
-│   └── src/ReplayViewer.js   # 리플레이 컴포넌트
-│
-└── engine/                   
-    ├── Dockerfile            # 샌드박스 환경 구성
-    └── games/                # 게임 로직
-
+├─ frontend/src/
+│  ├─ features/           인증·Land Grab 기능 API와 결과 정책
+│  ├─ shared/             HTTP, 런타임 설정, STOMP 공통 코드
+│  └─ *.js                페이지와 화면 조합
+├─ backend/code/src/main/java/com/battle/code/
+│  ├─ controller/         REST·STOMP 진입점
+│  ├─ service/            인증·매칭·게임 오케스트레이션
+│  ├─ execution/          Docker 실행과 임시 작업공간 관리
+│  ├─ security/, config/  HTTP·JWT·OAuth2·STOMP·Redis 설정
+│  └─ domain/, repository/, dto/
+├─ engine/                다중 언어 runner와 Land Grab 규칙
+├─ docs/improvement/      분석, 검증, 결과, 트러블슈팅
+└─ compose.yaml           로컬 MySQL·Redis
 ```
 
-## 05 실행 방법
+## 로컬 실행
 
-### Prerequisites
+### 요구 사항
 
-* Docker & Docker Compose
-* Java 17+
-* Node.js 18+
-* Redis & MySQL
+- Java 17 이상
+- Node.js 18 이상과 npm
+- Python 3.10 이상
+- Docker Desktop 또는 호환 Docker daemon
 
-### 1. 환경 설정 (코드에 미포함) - application.properties
+### 1. 설정과 인프라
 
-```properties
-## Database
-DATABASE_URL=jdbc:mysql://localhost:3306/code_arena
-DATABASE_USERNAME=root
-DATABASE_PASSWORD=your_password
+개발 기본값은 그대로 실행할 수 있습니다. 값을 바꾸려면 루트의 `.env.example`을 `.env`로 복사하고 수정합니다. `.env`는 Compose가 읽으며, 백엔드 값은 같은 이름을 셸 또는 IDE 실행 설정에도 지정해야 합니다.
 
-## Redis
-REDIS_HOST=localhost
-REDIS_PORT=6379
-
-## OAuth2 (Google/Kakao/Naver)
-OAUTH2_CLIENT_ID=...
-OAUTH2_CLIENT_SECRET=...
+```powershell
+Copy-Item .env.example .env
+docker compose up -d
+docker compose ps
 ```
 
-### 2. 백엔드 실행
+### 2. 코드 실행 이미지
 
-```bash
-cd backend/code
-./mvn clean package
-./mvn spring-boot:run
+백엔드 기본 이미지 이름과 아래 태그는 모두 `code-battle-engine`입니다.
+
+```powershell
+docker build -t code-battle-engine engine
 ```
 
-### 3. 프론트엔드 실행
+### 3. 백엔드
 
-```bash
-cd frontend
-npm install
-npm start
+```powershell
+Set-Location backend/code
+.\mvnw.cmd spring-boot:run
 ```
 
-### 4. 가상환경 구성 (Docker)
+macOS/Linux에서는 `./mvnw spring-boot:run`을 사용합니다. 기본 주소는 `http://localhost:8080`입니다.
 
-```bash
-cd engine
-docker build -t code-execution-engine .
+### 4. 프론트엔드
+
+```powershell
+Set-Location frontend
+Copy-Item .env.example .env
+npm.cmd ci
+npm.cmd start
 ```
+
+기본 주소는 `http://localhost:3000`입니다. 다른 백엔드를 사용하면 `REACT_APP_API_BASE_URL`을 변경합니다.
+
+Google 로그인은 선택 사항입니다. 사용하려면 Spring 표준 환경 변수 `SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_ID`, `..._CLIENT_SECRET`, `..._SCOPE`를 설정하고 Google 콘솔에 `http://localhost:8080/login/oauth2/code/google`을 리다이렉트 URI로 등록합니다. 설정하지 않아도 로컬·게스트 로그인과 서버 기동은 동작합니다.
+
+## 검증
+
+```powershell
+# 프론트엔드
+Set-Location frontend
+npm.cmd test -- --watchAll=false
+npm.cmd run build
+
+# 백엔드
+Set-Location ../backend/code
+.\mvnw.cmd test
+
+# 엔진: code-battle-engine 이미지가 있으면 5개 언어 Docker 계약 테스트도 실행
+Set-Location ../..
+python -m unittest discover -s engine/tests -v
+```
+
+현재 자동 검증 범위와 수동 시나리오는 [검증 기준선](docs/improvement/verification-baseline.md), 개선 내역과 남은 제한은 [2단계 결과](docs/improvement/phase-2-results.md)에 기록합니다.
+
+## 환경 변수와 운영 주의사항
+
+| 변수 | 기본값 | 설명 |
+| --- | --- | --- |
+| `DATABASE_URL`, `DATABASE_USERNAME`, `DATABASE_PASSWORD` | 로컬 `code_arena`/`cca` | MySQL 연결 |
+| `REDIS_HOST`, `REDIS_PORT` | `localhost`, `6379` | 매칭·세션 Redis |
+| `FRONTEND_URL` | `http://localhost:3000` | CORS, WebSocket 허용 origin, OAuth 성공 리다이렉트 |
+| `JWT_SECRET` | 로컬 개발 전용 값 | 운영에서는 32바이트 이상의 무작위 비밀로 반드시 교체 |
+| `JWT_EXPIRATION` | `7d` | JWT와 쿠키 수명 |
+| `COOKIE_SECURE`, `COOKIE_SAME_SITE` | `false`, `Lax` | HTTPS 운영에서는 `true`와 배포 구조에 맞는 SameSite 사용 |
+| `ENGINE_IMAGE` | `code-battle-engine` | 실행 엔진 이미지 |
+| `ENGINE_WORKSPACE` | `temp` | 매치별 임시 작업공간 루트 |
+| `REACT_APP_API_BASE_URL` | `http://localhost:8080` | 프론트 REST·SockJS 기준 주소 |
+
+- 백엔드는 Docker CLI를 직접 호출합니다. Docker socket을 외부에 노출하거나 백엔드 컨테이너에 무제한으로 마운트하지 마세요.
+- 운영에서는 `JPA_DDL_AUTO=validate`와 별도 마이그레이션 도구 사용을 권장합니다.
+- 엔진 컨테이너는 네트워크 없음, 0.5 CPU, 512 MiB, PID 128, 읽기 전용 rootfs로 실행됩니다. 정책 변경 시 실행기 테스트와 운영 문서를 함께 갱신하세요.
+- Redis 매치 데이터는 30분, WebSocket 세션은 2시간 TTL을 사용합니다. 예상 최대 대전 시간과 장애 복구 정책에 맞춰 함께 조정해야 합니다.
+- `.env`, OAuth 비밀, 실제 JWT 비밀과 사용자 제출 코드는 커밋하지 마세요.
