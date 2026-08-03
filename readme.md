@@ -35,7 +35,9 @@ code_clash_arena/
 │  ├─ security/, config/  HTTP·JWT·OAuth2·STOMP·Redis 설정
 │  └─ domain/, repository/, dto/
 ├─ engine/                다중 언어 runner와 Land Grab 규칙
-├─ docs/improvement/      분석, 검증, 결과, 트러블슈팅
+├─ doc/                   역할별 현재 코드 설계
+├─ docs/                  완료된 분석·검증·개선 기록
+├─ roadmap/               미완료 작업과 완료 조건
 └─ compose.yaml           로컬 MySQL·Redis
 ```
 
@@ -43,7 +45,7 @@ code_clash_arena/
 
 - 역할별 현재 코드 설계: [`doc/README.md`](doc/README.md)
 - 남은 작업과 우선순위·완료 조건: [`roadmap/README.md`](roadmap/README.md)
-- 완료된 2단계 개선 결과: [`docs/improvement/phase-2-results.md`](docs/improvement/phase-2-results.md)
+- 완료 기록 색인: [`docs/README.md`](docs/README.md)
 
 ## 로컬 실행
 

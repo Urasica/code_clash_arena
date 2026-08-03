@@ -1,5 +1,7 @@
 # Code Clash Arena 개선 2단계 결과
 
+> 이 문서는 2단계 종료 시점의 완료 기록이다. 현재 설계는 [`../../doc`](../../doc/README.md), 최신 미완료 작업은 [`../../roadmap`](../../roadmap/README.md)을 기준으로 한다.
+
 - 수행일: 2026-08-03
 - 기준: `61eec5c` (`main`)
 - 작업 브랜치: `codex/stage-2-improvements`
@@ -146,7 +148,7 @@ STOMP 연결·SEND·SUBSCRIBE는 인증 Principal이 없으면 거부된다. 개
 
 Docker 계약 테스트는 `code-battle-engine` 이미지를 실제로 빌드한 뒤 Python, Java, C, C++, JavaScript 기본 전략이 각각 50턴 결과를 반환하는지 확인한다.
 
-## 7. 남은 제한과 후속 우선순위
+## 7. 종료 당시 남은 제한
 
 - 실제 두 브라우저, 실 Redis, 실 MySQL을 묶은 PvP E2E는 자동화하지 않았다. 배포 전 join/cancel/동시 submit/disconnect를 브라우저 또는 Testcontainers로 추가해야 한다.
 - Google OAuth는 선택적 설정과 토큰 비노출 흐름까지만 구현했다. 실제 공급자 credential을 사용하는 smoke는 운영 비밀이 있는 환경에서 수행해야 한다.
