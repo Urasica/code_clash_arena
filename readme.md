@@ -39,6 +39,12 @@ code_clash_arena/
 └─ compose.yaml           로컬 MySQL·Redis
 ```
 
+## 설계와 로드맵
+
+- 역할별 현재 코드 설계: [`doc/README.md`](doc/README.md)
+- 남은 작업과 우선순위·완료 조건: [`roadmap/README.md`](roadmap/README.md)
+- 완료된 2단계 개선 결과: [`docs/improvement/phase-2-results.md`](docs/improvement/phase-2-results.md)
+
 ## 로컬 실행
 
 ### 요구 사항
