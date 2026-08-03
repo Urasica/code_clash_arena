@@ -5,6 +5,9 @@ import com.battle.code.security.JwtTokenProvider;
 import com.battle.code.security.OAuth2SuccessHandler;
 import com.battle.code.security.AuthCookieProperties;
 import com.battle.code.security.JwtProperties;
+import com.battle.code.security.RateLimitFilter;
+import com.battle.code.security.RateLimitProperties;
+import com.battle.code.security.SameOriginFilter;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.ObjectProvider;
@@ -12,6 +15,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -30,13 +34,15 @@ import java.util.List;
 
 @Configuration
 @EnableWebSecurity
-@EnableConfigurationProperties({JwtProperties.class, AuthCookieProperties.class})
+@EnableConfigurationProperties({JwtProperties.class, AuthCookieProperties.class, RateLimitProperties.class})
 @RequiredArgsConstructor
 public class SecurityConfig {
 
     private final OAuth2SuccessHandler oAuth2SuccessHandler;
     private final JwtTokenProvider jwtTokenProvider;
     private final ObjectProvider<ClientRegistrationRepository> clientRegistrationRepository;
+    private final SameOriginFilter sameOriginFilter;
+    private final RateLimitFilter rateLimitFilter;
 
     @Value("${cca.frontend-url:http://localhost:3000}")
     private String frontendUrl;
@@ -44,6 +50,20 @@ public class SecurityConfig {
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
+    }
+
+    @Bean
+    public FilterRegistrationBean<SameOriginFilter> disableSameOriginServletRegistration() {
+        FilterRegistrationBean<SameOriginFilter> registration = new FilterRegistrationBean<>(sameOriginFilter);
+        registration.setEnabled(false);
+        return registration;
+    }
+
+    @Bean
+    public FilterRegistrationBean<RateLimitFilter> disableRateLimitServletRegistration() {
+        FilterRegistrationBean<RateLimitFilter> registration = new FilterRegistrationBean<>(rateLimitFilter);
+        registration.setEnabled(false);
+        return registration;
     }
 
     @Bean
@@ -68,6 +88,8 @@ public class SecurityConfig {
                         .anyRequest().permitAll()
                 )
                 .addFilterBefore(new JwtFilter(jwtTokenProvider), UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(sameOriginFilter, JwtFilter.class)
+                .addFilterAfter(rateLimitFilter, JwtFilter.class)
 
                 // 인증 실패 시 리다이렉트 대신 401 에러 반환
                 .exceptionHandling(exception -> exception

@@ -13,7 +13,7 @@
 | MATCH-02 | 다중 인스턴스 매칭 원자성 | DONE | MATCH-01 state vocabulary |
 | MATCH-03 | 다중 소켓 disconnect·cleanup | DONE | MATCH-01 |
 | EXEC-03 | 플레이어·심판 격리와 공정성 | DONE | 실행 계약 테스트 |
-| SEC-01 | CSRF·rate limit·운영 비밀 정책 | READY | API-01 |
+| SEC-01 | CSRF·rate limit·운영 비밀 정책 | DONE | API-01 |
 | DATA-01 | migration·제약조건·저장 일관성 | READY | 결과 DTO/state |
 | REL-01 | 실 인프라 M1 E2E | READY | 위 작업 전체 |
 
@@ -49,6 +49,7 @@
 
 - 근거: HttpOnly cookie를 사용하지만 CSRF가 비활성화되어 있고 login/guest/compile/run rate limit과 운영 secret 검증이 없다.
 - 범위: same-origin CSRF policy, origin 검사, endpoint rate limit, production cookie/secret fail-fast, guest cleanup 기준.
+- 완료 범위: 상태 변경 API에 동일-origin 검사를 적용하고 login/guest/compile/run을 Redis 고정 window로 제한했다. Redis 장애 시 보호 요청을 닫으며 `prod` profile은 약한 JWT secret, 비보안 cookie, HTTP frontend 설정을 기동 단계에서 거부한다. 미참조 guest는 TTL 기준으로 정리한다.
 - 완료 조건: cross-site 상태 변경과 과다 요청이 거부되고 약한 운영 secret/cookie 설정으로 기동할 수 없다.
 
 ## DATA-01 schema와 저장

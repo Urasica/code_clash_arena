@@ -32,6 +32,16 @@ cca:
     secret: ${JWT_SECRET:local-development-only-secret-change-me-32-bytes}
     expiration: ${JWT_EXPIRATION:7d}
   auth:
+    guest-ttl: ${GUEST_TTL:24h}
+    guest-cleanup-interval: ${GUEST_CLEANUP_INTERVAL:1h}
     cookie:
       secure: ${COOKIE_SECURE:false}
       same-site: ${COOKIE_SAME_SITE:Lax}
+  security:
+    require-origin: ${SECURITY_REQUIRE_ORIGIN:true}
+    rate-limit:
+      window: ${RATE_LIMIT_WINDOW:1m}
+      login: ${RATE_LIMIT_LOGIN:10}
+      guest: ${RATE_LIMIT_GUEST:5}
+      compile: ${RATE_LIMIT_COMPILE:20}
+      run: ${RATE_LIMIT_RUN:10}
