@@ -87,4 +87,4 @@ Python, Java, C, C++, JavaScript의 backend runner template에 최소 strategy�
 - 변경 전 기준선: [`../docs/improvement/verification-baseline.md`](../docs/improvement/verification-baseline.md)
 - 2단계 결과: [`../docs/improvement/phase-2-results.md`](../docs/improvement/phase-2-results.md)
 - 재현·원인·해결: [`../docs/improvement/troubleshooting.md`](../docs/improvement/troubleshooting.md)
-- 미완료 항목: [`../roadmap/backlog.md`](../roadmap/backlog.md)
+- 미완료 항목: [`../roadmap/README.md`](../roadmap/README.md)
