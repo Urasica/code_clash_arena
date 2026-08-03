@@ -5,8 +5,13 @@ spring:
     password: ${DATABASE_PASSWORD:cca_dev}
   jpa:
     hibernate:
-      ddl-auto: ${JPA_DDL_AUTO:update}
+      ddl-auto: validate
     open-in-view: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration/mysql
+    baseline-on-migrate: true
+    baseline-version: 0
   data:
     redis:
       host: ${REDIS_HOST:localhost}

@@ -114,7 +114,7 @@ public class GameSessionService {
             }
             matchService.savePvPMatchResult(
                     matchId, Long.parseLong(p1Id), Long.parseLong(p2Id), result,
-                    p1Code, p1Lang, p2Code, p2Lang
+                    p1Code, p1Lang, p2Code, p2Lang, mapDataJson
             );
             if (!stateService.transition(matchId, MatchStatus.COMPLETED, MatchStatus.PERSISTING)) {
                 throw new IllegalStateException("Match state changed before completion.");
@@ -197,7 +197,8 @@ public class GameSessionService {
                     value(roomKey, "p1_code"),
                     value(roomKey, "p1_lang"),
                     value(roomKey, "p2_code"),
-                    value(roomKey, "p2_lang")
+                    value(roomKey, "p2_lang"),
+                    requiredValue(roomKey, "mapData")
             );
             messagingTemplate.convertAndSend(gameTopic(matchId), result);
         } finally {

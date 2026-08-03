@@ -91,7 +91,7 @@ public class LandGrabService {
         return objectMapper.readValue(output, CompileResultDto.class);
     }
 
-    public MatchExecutionResultDto runMatch(String matchId, long ownerId, String userCode, String language, String difficulty) throws IOException, InterruptedException {
+    public MatchRunOutcome runMatch(String matchId, long ownerId, String userCode, String language, String difficulty) throws IOException, InterruptedException {
         leaseService.requireOwnerAndTouch(matchId, ownerId, WorkspaceStatus.RUNNING);
         Path matchDir = workspaceManager.resolve(matchId);
 
@@ -99,6 +99,9 @@ public class LandGrabService {
             if (!Files.exists(matchDir)) {
                 throw new java.util.NoSuchElementException("Match workspace not found.");
             }
+            String mapDataJson = objectMapper.writeValueAsString(
+                    objectMapper.readTree(matchDir.resolve("map.json").toFile())
+            );
             savePlayerCode(matchDir, "p1", language, userCode);
 
             String targetDifficulty = (difficulty != null) ? difficulty.toLowerCase() : "easy";
@@ -110,7 +113,10 @@ public class LandGrabService {
             String jsonOutput = dockerExecutor.execute(
                     matchDir, GAME_TYPE, "run", true, true, RUN_TIMEOUT_SECONDS
             );
-            return objectMapper.readValue(jsonOutput, MatchExecutionResultDto.class);
+            return new MatchRunOutcome(
+                    objectMapper.readValue(jsonOutput, MatchExecutionResultDto.class),
+                    mapDataJson
+            );
         } finally {
             try {
                 leaseService.release(matchId);

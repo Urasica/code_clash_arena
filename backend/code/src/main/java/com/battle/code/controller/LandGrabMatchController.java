@@ -5,6 +5,7 @@ import com.battle.code.dto.MatchExecutionResultDto;
 import com.battle.code.dto.RunRequestDto;
 import com.battle.code.dto.StartMatchResponseDto;
 import com.battle.code.service.LandGrabService;
+import com.battle.code.service.MatchRunOutcome;
 import com.battle.code.service.MatchService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -48,13 +49,14 @@ public class LandGrabMatchController {
                 request.getLanguage(),
                 request.getDifficulty());
 
-        MatchExecutionResultDto result = landGrabService.runMatch(
+        MatchRunOutcome outcome = landGrabService.runMatch(
                 request.getMatchId(),
                 userId,
                 request.getUserCode(),
                 request.getLanguage(),
                 request.getDifficulty()
         );
+        MatchExecutionResultDto result = outcome.result();
 
         log.debug("[LAND_GRAB_RUN] Winner={}, turns={}", result.winner(), result.totalTurns());
 
@@ -68,7 +70,8 @@ public class LandGrabMatchController {
                     result,
                     request.getUserCode(),
                     request.getLanguage() != null ? request.getLanguage() : "python",
-                    request.getDifficulty()
+                    request.getDifficulty(),
+                    outcome.mapDataJson()
             );
 
             log.info("[MATCH_SAVE] Success - userId={}, matchId={}",

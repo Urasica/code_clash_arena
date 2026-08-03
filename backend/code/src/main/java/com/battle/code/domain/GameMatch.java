@@ -7,7 +7,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity
-@Table(name = "game_match")
+@Table(
+        name = "game_match",
+        uniqueConstraints = @UniqueConstraint(name = "uk_game_match_uuid", columnNames = "match_uuid"),
+        indexes = @Index(name = "idx_game_match_played_at", columnList = "played_at")
+)
 @Getter @Setter
 @NoArgsConstructor
 @AllArgsConstructor
@@ -17,16 +21,19 @@ public class GameMatch {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(unique = true)
+    @Column(nullable = false)
     private String matchUuid; // 프론트와 공유하는 Match ID
 
+    @Column(nullable = false)
     private String gameType;
 
+    @Column(nullable = false)
     private String mode; // AI, PVP
 
-    @Column(columnDefinition = "TEXT")
+    @Column(nullable = false, columnDefinition = "TEXT")
     private String mapData; // 맵 초기 상태 (JSON)
 
+    @Column(nullable = false)
     private LocalDateTime playedAt;
 
     // 양방향 매핑

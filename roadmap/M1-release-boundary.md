@@ -14,7 +14,7 @@
 | MATCH-03 | 다중 소켓 disconnect·cleanup | DONE | MATCH-01 |
 | EXEC-03 | 플레이어·심판 격리와 공정성 | DONE | 실행 계약 테스트 |
 | SEC-01 | CSRF·rate limit·운영 비밀 정책 | DONE | API-01 |
-| DATA-01 | migration·제약조건·저장 일관성 | READY | 결과 DTO/state |
+| DATA-01 | migration·제약조건·저장 일관성 | DONE | 결과 DTO/state |
 | REL-01 | 실 인프라 M1 E2E | READY | 위 작업 전체 |
 
 ## API-01 요청·응답 계약
@@ -56,6 +56,7 @@
 
 - 근거: `ddl-auto=update`, migration 부재, mapData 미저장, 중복 match UUID와 결과 정책 위험.
 - 범위: Flyway baseline, FK/unique/index/nullability, `validate`, map/result metadata, idempotent save.
+- 완료 범위: MySQL/H2 Flyway V1과 기존 schema baseline 경로를 추가하고 Hibernate를 `validate`로 고정했다. AI workspace와 PvP room의 map snapshot을 결과 aggregate에 포함하며, match UUID 사전 확인과 DB unique 제약으로 순차·동시 중복 저장을 멱등 처리한다.
 - 완료 조건: 빈 DB와 upgrade가 재현되고 동일 match UUID 중복 저장이 없으며 map·player·replay 관계가 완전하다.
 
 ## REL-01 M1 통합 검증

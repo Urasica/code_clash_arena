@@ -10,6 +10,8 @@ import java.util.List;
 
 public interface GameMatchRepository extends JpaRepository<GameMatch, Long> {
 
+    boolean existsByMatchUuid(String matchUuid);
+
     // Entity 대신 DTO로 변환해서 조회
     @Query("SELECT new com.battle.code.dto.MatchListDto(" +
             "m.id, m.matchUuid, m.gameType, mp.result, mp.score, m.playedAt) " +
