@@ -13,12 +13,12 @@ MAP_FILE = os.path.join(DATA_DIR, "map.json")
 # 컴파일 제한 시간 (초)
 COMPILE_TIMEOUT = 10 
 
-def prepare_player(player_prefix):
+def prepare_player(player_prefix, players_dir=PLAYERS_DIR):
     """
     폴더 격리 방식 적용: /app/players/{p1|p2}/Main.java 등을 찾음
     """
     # 플레이어별 서브 디렉토리 경로 (예: /app/players/p1)
-    player_dir = os.path.join(PLAYERS_DIR, player_prefix)
+    player_dir = os.path.join(players_dir, player_prefix)
     
     try:
         # 1. Java (Main.java가 서브 폴더에 있음)
@@ -44,12 +44,23 @@ def prepare_player(player_prefix):
                 raise Exception(f"[C++ Compilation Error]\n{result.stderr}")
             return [out_file]
 
-        # 3. Python (p1.py가 서브 폴더에 있음)
+        # 3. C (p1.c가 서브 폴더에 있음)
+        c_src = os.path.join(player_dir, f"{player_prefix}.c")
+        if os.path.exists(c_src):
+            out_file = os.path.join(player_dir, f"{player_prefix}.out")
+            compile_cmd = ["gcc", c_src, "-O2", "-o", out_file]
+            result = subprocess.run(compile_cmd, capture_output=True, text=True, timeout=COMPILE_TIMEOUT)
+
+            if result.returncode != 0:
+                raise Exception(f"[C Compilation Error]\n{result.stderr}")
+            return [out_file]
+
+        # 4. Python (p1.py가 서브 폴더에 있음)
         py_src = os.path.join(player_dir, f"{player_prefix}.py")
         if os.path.exists(py_src):
             return ["python3", py_src]
 
-        # 4. Node.js
+        # 5. Node.js
         js_src = os.path.join(player_dir, f"{player_prefix}.js")
         if os.path.exists(js_src):
             return ["node", js_src]
@@ -127,7 +138,8 @@ if __name__ == "__main__":
                 print(json.dumps({
                     "winner": "p2",
                     "p1_error": str(e),
-                    "error": "Player 1 Initialization Failed",
+                    "final_scores": {"p1": 0, "p2": 0},
+                    "total_turns": 0,
                     "logs": _make_turn0_log(game_module, MAP_FILE)
                 }))
                 sys.exit(0)
@@ -140,7 +152,8 @@ if __name__ == "__main__":
                 print(json.dumps({
                     "winner": "p1",
                     "p2_error": str(e),
-                    "error": "Player 2 Initialization Failed",
+                    "final_scores": {"p1": 0, "p2": 0},
+                    "total_turns": 0,
                     "logs": _make_turn0_log(game_module, MAP_FILE)
                 }))
                 sys.exit(0)

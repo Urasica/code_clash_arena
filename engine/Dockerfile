@@ -4,11 +4,11 @@ FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
 
 # 유틸 및 언어별 컴파일러/런타임 설치
-RUN apt-get update && apt-get install -y \
-    python3 python3-pip \
-    openjdk-17-jdk \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    openjdk-17-jdk-headless \
     build-essential \
-    nodejs npm \
+    nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

@@ -100,7 +100,7 @@ public class MatchingScheduler {
     private Map<String, Object> generateValidLandGrabMap() {
         for (int i = 0; i < 3; i++) {
             try {
-                Map<String, Object> map = landGrabService.startMatch();
+                Map<String, Object> map = landGrabService.generateTransientMap();
                 if (map != null && map.containsKey("walls") && map.containsKey("coins")) {
                     List<?> walls = (List<?>) map.get("walls");
                     if (!walls.isEmpty()) return map;
