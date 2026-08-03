@@ -8,7 +8,7 @@
 | ID | 작업 | 상태 | 선행 |
 | --- | --- | --- | --- |
 | API-01 | 요청·응답 DTO와 단일 오류 계약 | DONE | 없음 |
-| EXEC-02 | AI workspace ownership·TTL·고아 정리 | READY | API-01 request contract |
+| EXEC-02 | AI workspace ownership·TTL·고아 정리 | DONE | API-01 request contract |
 | MATCH-01 | 비동기 실행과 명시적 상태 머신 | READY | API-01 |
 | MATCH-02 | 다중 인스턴스 매칭 원자성 | READY | MATCH-01 state vocabulary |
 | MATCH-03 | 다중 소켓 disconnect·cleanup | READY | MATCH-01 |
@@ -28,6 +28,7 @@
 
 - 근거: `/start` workspace와 user ownership 연결이 없고 run하지 않은 workspace가 남을 수 있다.
 - 범위: owner/status/expiresAt, compile/run 권한, idle TTL, startup/scheduled janitor.
+- 완료 범위: `ai_workspace:{matchId}` lease에 owner/status/expiresAt과 TTL을 저장하고 compile/run 소유권·중복 run을 검증한다. run 종료 시 lease와 폴더를 제거하며 startup/주기 janitor는 lease 없는 오래된 UUID 폴더만 정리한다.
 - 완료 조건: 다른 사용자의 matchId 사용이 거부되고 중단·재시작 후 TTL을 넘은 workspace가 없다.
 
 ## MATCH-01~03 매치 상태와 동시성

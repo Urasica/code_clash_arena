@@ -2,6 +2,7 @@ package com.battle.code.service;
 
 import com.battle.code.execution.DockerMatchExecutor;
 import com.battle.code.execution.MatchWorkspaceManager;
+import com.battle.code.execution.WorkspaceLeaseService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -9,6 +10,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 class LandGrabServiceTest {
 
@@ -16,7 +18,8 @@ class LandGrabServiceTest {
             new CodeTemplateManager(),
             new ObjectMapper(),
             new DockerMatchExecutor("code-battle-engine"),
-            new MatchWorkspaceManager("temp")
+            new MatchWorkspaceManager("temp"),
+            mock(WorkspaceLeaseService.class)
     );
 
     @TempDir

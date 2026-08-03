@@ -6,6 +6,8 @@ import com.battle.code.dto.MatchExecutionResultDto;
 import com.battle.code.dto.StartMatchResponseDto;
 import com.battle.code.execution.DockerMatchExecutor;
 import com.battle.code.execution.MatchWorkspaceManager;
+import com.battle.code.execution.WorkspaceLeaseService;
+import com.battle.code.execution.WorkspaceLeaseService.WorkspaceStatus;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -31,14 +33,21 @@ public class LandGrabService {
     private final ObjectMapper objectMapper;
     private final DockerMatchExecutor dockerExecutor;
     private final MatchWorkspaceManager workspaceManager;
+    private final WorkspaceLeaseService leaseService;
 
-    public StartMatchResponseDto startMatch() throws IOException, InterruptedException {
+    public StartMatchResponseDto startMatch(long ownerId) throws IOException, InterruptedException {
         String matchId = UUID.randomUUID().toString();
         Path matchDir = workspaceManager.resolve(matchId);
         try {
-            return initializeMap(matchId, matchDir);
+            StartMatchResponseDto response = initializeMap(matchId, matchDir);
+            leaseService.create(matchId, ownerId);
+            return response;
         } catch (IOException | InterruptedException | RuntimeException exception) {
-            workspaceManager.delete(matchDir);
+            try {
+                leaseService.release(matchId);
+            } finally {
+                workspaceManager.delete(matchDir);
+            }
             throw exception;
         }
     }
@@ -66,9 +75,13 @@ public class LandGrabService {
         return new StartMatchResponseDto(matchId, mapData.walls(), mapData.coins());
     }
 
-    public CompileResultDto compileCode(String matchId, String userCode, String language) throws IOException, InterruptedException {
+    public CompileResultDto compileCode(String matchId, long ownerId, String userCode, String language) throws IOException, InterruptedException {
+        leaseService.requireOwnerAndTouch(matchId, ownerId, WorkspaceStatus.COMPILED);
         Path matchDir = workspaceManager.resolve(matchId);
-        if (!Files.exists(matchDir)) throw new RuntimeException("Match ID not found.");
+        if (!Files.exists(matchDir)) {
+            leaseService.release(matchId);
+            throw new java.util.NoSuchElementException("Match workspace not found.");
+        }
 
         savePlayerCode(matchDir, "p1", language, userCode);
 
@@ -78,11 +91,14 @@ public class LandGrabService {
         return objectMapper.readValue(output, CompileResultDto.class);
     }
 
-    public MatchExecutionResultDto runMatch(String matchId, String userCode, String language, String difficulty) throws IOException, InterruptedException {
+    public MatchExecutionResultDto runMatch(String matchId, long ownerId, String userCode, String language, String difficulty) throws IOException, InterruptedException {
+        leaseService.requireOwnerAndTouch(matchId, ownerId, WorkspaceStatus.RUNNING);
         Path matchDir = workspaceManager.resolve(matchId);
-        if (!Files.exists(matchDir)) throw new RuntimeException("Match ID not found.");
 
         try {
+            if (!Files.exists(matchDir)) {
+                throw new java.util.NoSuchElementException("Match workspace not found.");
+            }
             savePlayerCode(matchDir, "p1", language, userCode);
 
             String targetDifficulty = (difficulty != null) ? difficulty.toLowerCase() : "easy";
@@ -96,7 +112,11 @@ public class LandGrabService {
             );
             return objectMapper.readValue(jsonOutput, MatchExecutionResultDto.class);
         } finally {
-            workspaceManager.delete(matchDir);
+            try {
+                leaseService.release(matchId);
+            } finally {
+                workspaceManager.delete(matchDir);
+            }
         }
     }
 

@@ -17,6 +17,10 @@ cca:
   engine:
     image: ${ENGINE_IMAGE:code-battle-engine}
     workspace: ${ENGINE_WORKSPACE:temp}
+    workspace-cleanup-enabled: ${ENGINE_WORKSPACE_CLEANUP_ENABLED:true}
+    workspace-idle-ttl: ${ENGINE_WORKSPACE_IDLE_TTL:30m}
+    workspace-cleanup-initial-delay: ${ENGINE_WORKSPACE_CLEANUP_INITIAL_DELAY:1m}
+    workspace-cleanup-interval: ${ENGINE_WORKSPACE_CLEANUP_INTERVAL:5m}
   jwt:
     secret: ${JWT_SECRET:local-development-only-secret-change-me-32-bytes}
     expiration: ${JWT_EXPIRATION:7d}

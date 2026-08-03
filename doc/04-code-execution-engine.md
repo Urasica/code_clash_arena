@@ -11,6 +11,8 @@
 | `LandGrabService` | AI/PvP 실행 순서, runner/AI 파일 준비, JSON 변환 |
 | `CodeTemplateManager` | classpath의 언어별 runner와 난이도별 AI 코드 로드 |
 | `MatchWorkspaceManager` | UUID 검증, workspace root 경계, 재귀 정리 |
+| `WorkspaceLeaseService` | AI workspace owner·상태·만료시각과 Redis TTL 관리 |
+| `WorkspaceJanitor` | 시작 시점과 주기 실행으로 lease 없는 고아 workspace 정리 |
 | `DockerMatchExecutor` | docker command, process stream, 전체 timeout, 출력 크기 상한 |
 | `engine/referee.py` | game module 선택, 언어 감지·컴파일, init/compile/run mode |
 | `engine/games/land_grab.py` | 맵 생성, player protocol, 턴 루프, 점수·winner·replay |
@@ -30,7 +32,9 @@
    └─ Main.java
 ```
 
-AI run은 p1 사용자 코드와 p2 Python AI를 쓴다. PvP run은 두 runner와 scheduler가 전달한 map JSON을 쓴다. AI/PvP run과 transient map은 finally에서 작업공간을 삭제한다.
+AI run은 p1 사용자 코드와 p2 Python AI를 쓴다. PvP run은 두 runner와 scheduler가 전달한 map JSON을 쓴다. AI `/start`는 `ai_workspace:{matchId}` Redis hash에 인증 사용자 owner, `READY` 상태, `expiresAt`을 기록한다. compile은 owner 확인 후 `COMPILED`, run은 `RUNNING`으로 갱신하며 idle TTL을 연장한다. 다른 사용자의 접근, 만료된 lease, 중복 run은 거부한다. AI/PvP run과 transient map은 finally에서 작업공간을 삭제하고 AI run은 lease도 함께 해제한다.
+
+기본 idle TTL은 30분이며 시작 시점과 기본 5분 주기의 janitor가 오래된 UUID 폴더를 검사한다. 대응하는 Redis lease가 없는 폴더만 삭제하고 UUID가 아닌 디렉터리는 건드리지 않는다.
 
 ## 언어별 runner
 
@@ -119,9 +123,9 @@ turn snapshot은 action, position, alive, coins, walls, board, scores, board_siz
 
 - 자원·timeout 값 일부가 코드 상수이고 match 결과에 engine image digest/policy version이 없다.
 - p1, p2, referee가 같은 container와 기본 root UID·파일 namespace를 공유한다. host 자원 격리는 적용되지만 플레이어 간 코드 기밀성·process 격리는 보장하지 않는다.
-- AI start/compile 뒤 run하지 않으면 workspace cleanup 경로를 거치지 않으며 matchId와 인증 사용자 ownership을 별도로 저장하지 않는다.
+- Redis가 장시간 중단되면 새 AI workspace lease를 만들 수 없으므로 `/start`도 실패하고 생성한 폴더를 되돌린다.
 - 사용자 코드와 replay의 보존/감사 정책이 실행 계층과 연결되어 있지 않다.
 - container 생성 비용과 동시 실행 capacity가 측정되지 않았다.
-- raw JSON/Map 계약이라 필드 호환성은 compile-time에 확인되지 않는다.
+- engine 자체는 JSON 프로세스 계약이지만 백엔드 경계에서 명시적 DTO와 직렬화 계약 테스트로 검증한다.
 
 후속 작업은 `EXEC-01`, `EXEC-02`, `EXEC-03`, `BE-01`, `DATA-02`, `SCALE-01`로 관리한다.

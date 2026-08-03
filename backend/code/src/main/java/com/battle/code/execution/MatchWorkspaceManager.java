@@ -8,7 +8,11 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.List;
 import java.util.UUID;
 
 @Slf4j
@@ -58,5 +62,30 @@ public class MatchWorkspaceManager {
         } catch (IOException exception) {
             log.warn("Failed to clean match workspace {}", matchDir, exception);
         }
+    }
+
+    public List<Path> findOlderThan(Duration age) {
+        if (!Files.isDirectory(workspaceRoot)) {
+            return List.of();
+        }
+        Instant cutoff = Instant.now().minus(age);
+        List<Path> expired = new ArrayList<>();
+        try (var children = Files.list(workspaceRoot)) {
+            children.filter(Files::isDirectory).forEach(path -> {
+                try {
+                    UUID.fromString(path.getFileName().toString());
+                    if (Files.getLastModifiedTime(path).toInstant().isBefore(cutoff)) {
+                        expired.add(path.toAbsolutePath().normalize());
+                    }
+                } catch (IllegalArgumentException ignored) {
+                    log.warn("Ignoring non-match directory below workspace root: {}", path);
+                } catch (IOException exception) {
+                    log.warn("Could not inspect workspace age: {}", path, exception);
+                }
+            });
+        } catch (IOException exception) {
+            log.warn("Could not scan match workspace root {}", workspaceRoot, exception);
+        }
+        return expired;
     }
 }

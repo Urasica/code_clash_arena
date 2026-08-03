@@ -5,6 +5,9 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -37,5 +40,21 @@ class MatchWorkspaceManagerTest {
 
         assertThat(matchDir).doesNotExist();
         assertThat(sibling).exists();
+    }
+
+    @Test
+    void expiredScanReturnsOnlyOldUuidDirectories() throws Exception {
+        MatchWorkspaceManager manager = new MatchWorkspaceManager(tempDir.toString());
+        Path expired = manager.resolve(UUID.randomUUID().toString());
+        Path active = manager.resolve(UUID.randomUUID().toString());
+        Path unrelated = tempDir.resolve("do-not-touch");
+        Files.createDirectories(expired);
+        Files.createDirectories(active);
+        Files.createDirectories(unrelated);
+        Files.setLastModifiedTime(expired, FileTime.from(Instant.now().minus(Duration.ofHours(2))));
+
+        assertThat(manager.findOlderThan(Duration.ofHours(1)))
+                .containsExactly(expired.toAbsolutePath().normalize());
+        assertThat(unrelated).exists();
     }
 }

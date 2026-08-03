@@ -16,6 +16,7 @@ import java.io.IOException;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -46,6 +47,7 @@ class LandGrabMatchControllerTest {
     @Test
     void invalidCompileRequestUsesTheStandardValidationError() throws Exception {
         mockMvc.perform(post("/api/match/land-grab/compile")
+                        .principal(() -> "7")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -64,6 +66,7 @@ class LandGrabMatchControllerTest {
     @Test
     void malformedJsonUsesTheStandardMalformedRequestError() throws Exception {
         mockMvc.perform(post("/api/match/land-grab/compile")
+                        .principal(() -> "7")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{"))
                 .andExpect(status().isBadRequest())
@@ -73,10 +76,11 @@ class LandGrabMatchControllerTest {
 
     @Test
     void executionDetailsAreNotExposedToTheClient() throws Exception {
-        when(landGrabService.compileCode(anyString(), anyString(), anyString()))
+        when(landGrabService.compileCode(anyString(), anyLong(), anyString(), anyString()))
                 .thenThrow(new IOException("sensitive compiler filesystem details"));
 
         mockMvc.perform(post("/api/match/land-grab/compile")
+                        .principal(() -> "7")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {

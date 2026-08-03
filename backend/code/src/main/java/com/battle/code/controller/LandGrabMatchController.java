@@ -9,13 +9,12 @@ import com.battle.code.service.MatchService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.security.Principal;
 @RestController
 @RequestMapping("/api/match/land-grab")
 @RequiredArgsConstructor
@@ -27,10 +26,10 @@ public class LandGrabMatchController {
 
     // 매치 생성 (맵 받기)
     @PostMapping("/start")
-    public ResponseEntity<StartMatchResponseDto> startMatch() throws IOException, InterruptedException {
+    public ResponseEntity<StartMatchResponseDto> startMatch(Principal principal) throws IOException, InterruptedException {
         log.info("[LAND_GRAB_START] Request");
 
-        StartMatchResponseDto result = landGrabService.startMatch();
+        StartMatchResponseDto result = landGrabService.startMatch(userId(principal));
         log.info("[LAND_GRAB_START] Success");
         return ResponseEntity.ok(result);
     }
@@ -39,12 +38,9 @@ public class LandGrabMatchController {
     @PostMapping("/run")
     public ResponseEntity<MatchExecutionResultDto> runMatch(
             @Valid @RequestBody RunRequestDto request,
-            @AuthenticationPrincipal UserDetails userDetails
+            Principal principal
     ) throws IOException, InterruptedException {
-        Long userId = null;
-        if (userDetails != null) {
-            userId = Long.parseLong(userDetails.getUsername());
-        }
+        long userId = userId(principal);
 
         log.info("[LAND_GRAB_RUN] Request - matchId={}, userId={}, lang={}, diff={}",
                 request.getMatchId(),
@@ -54,6 +50,7 @@ public class LandGrabMatchController {
 
         MatchExecutionResultDto result = landGrabService.runMatch(
                 request.getMatchId(),
+                userId,
                 request.getUserCode(),
                 request.getLanguage(),
                 request.getDifficulty()
@@ -61,28 +58,24 @@ public class LandGrabMatchController {
 
         log.debug("[LAND_GRAB_RUN] Winner={}, turns={}", result.winner(), result.totalTurns());
 
-        if (userDetails != null) {
-            try {
-                log.info("[MATCH_SAVE] Attempt - userId={}, matchId={}",
-                        userId, request.getMatchId());
+        try {
+            log.info("[MATCH_SAVE] Attempt - userId={}, matchId={}",
+                    userId, request.getMatchId());
 
-                matchService.saveMatchResult(
-                        userId,
-                        request.getMatchId(),
-                        result,
-                        request.getUserCode(),
-                        request.getLanguage() != null ? request.getLanguage() : "python",
-                        request.getDifficulty()
-                );
+            matchService.saveMatchResult(
+                    userId,
+                    request.getMatchId(),
+                    result,
+                    request.getUserCode(),
+                    request.getLanguage() != null ? request.getLanguage() : "python",
+                    request.getDifficulty()
+            );
 
-                log.info("[MATCH_SAVE] Success - userId={}, matchId={}",
-                        userId, request.getMatchId());
-            } catch (Exception exception) {
-                log.error("[MATCH_SAVE] Failed - userId={}, matchId={}",
-                        userId, request.getMatchId(), exception);
-            }
-        } else {
-            log.warn("[MATCH_SAVE] Skipped - anonymous user");
+            log.info("[MATCH_SAVE] Success - userId={}, matchId={}",
+                    userId, request.getMatchId());
+        } catch (Exception exception) {
+            log.error("[MATCH_SAVE] Failed - userId={}, matchId={}",
+                    userId, request.getMatchId(), exception);
         }
 
         return ResponseEntity.ok(result);
@@ -90,7 +83,8 @@ public class LandGrabMatchController {
 
     @PostMapping("/compile")
     public ResponseEntity<CompileResultDto> compileMatch(
-            @Valid @RequestBody RunRequestDto request
+            @Valid @RequestBody RunRequestDto request,
+            Principal principal
     ) throws IOException, InterruptedException {
 
         String language = request.getLanguage() != null
@@ -102,6 +96,7 @@ public class LandGrabMatchController {
 
         CompileResultDto result = landGrabService.compileCode(
                 request.getMatchId(),
+                userId(principal),
                 request.getUserCode(),
                 language
         );
@@ -110,5 +105,14 @@ public class LandGrabMatchController {
                 request.getMatchId());
 
         return ResponseEntity.ok(result);
+    }
+
+    private long userId(Principal principal) {
+        if (principal == null) {
+            throw new org.springframework.security.authentication.AuthenticationCredentialsNotFoundException(
+                    "Authentication required"
+            );
+        }
+        return Long.parseLong(principal.getName());
     }
 }
