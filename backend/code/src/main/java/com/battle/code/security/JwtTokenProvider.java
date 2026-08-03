@@ -2,23 +2,29 @@ package com.battle.code.security;
 
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
-import jakarta.servlet.http.Cookie;
-import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.stereotype.Component;
+import java.nio.charset.StandardCharsets;
 import java.security.Key;
 import java.util.Date;
 
 @Component
 @RequiredArgsConstructor
 public class JwtTokenProvider {
-    private final Key key = Keys.secretKeyFor(SignatureAlgorithm.HS256);
-    private final long EXPIRATION_TIME = 1000 * 60 * 60 * 24 * 7; // 7일;
+    private final JwtProperties properties;
     private final UserDetailsService userDetailsService;
+
+    private Key signingKey() {
+        byte[] secret = properties.getSecret().getBytes(StandardCharsets.UTF_8);
+        if (secret.length < 32) {
+            throw new IllegalStateException("cca.jwt.secret must be at least 32 bytes.");
+        }
+        return Keys.hmacShaKeyFor(secret);
+    }
 
     // 토큰 생성
     public String createToken(Long userId, String role) {
@@ -26,26 +32,15 @@ public class JwtTokenProvider {
                 .setSubject(String.valueOf(userId))
                 .claim("role", role)
                 .setIssuedAt(new Date())
-                .setExpiration(new Date(System.currentTimeMillis() + EXPIRATION_TIME))
-                .signWith(key)
+                .setExpiration(new Date(System.currentTimeMillis() + properties.getExpiration().toMillis()))
+                .signWith(signingKey())
                 .compact();
-    }
-
-    // 쿠키에서 토큰 추출
-    public String resolveToken(HttpServletRequest request) {
-        Cookie[] cookies = request.getCookies();
-        if (cookies != null) {
-            for (Cookie c : cookies) {
-                if ("accessToken".equals(c.getName())) return c.getValue();
-            }
-        }
-        return null;
     }
 
     // 토큰 검증 & ID 추출
     public boolean validateToken(String token) {
         try {
-            Jwts.parserBuilder().setSigningKey(key).build().parseClaimsJws(token);
+            Jwts.parserBuilder().setSigningKey(signingKey()).build().parseClaimsJws(token);
             return true;
         } catch (Exception e) {
             return false;
@@ -53,7 +48,7 @@ public class JwtTokenProvider {
     }
 
     public Long getUserId(String token) {
-        return Long.parseLong(Jwts.parserBuilder().setSigningKey(key).build()
+        return Long.parseLong(Jwts.parserBuilder().setSigningKey(signingKey()).build()
                 .parseClaimsJws(token).getBody().getSubject());
     }
 

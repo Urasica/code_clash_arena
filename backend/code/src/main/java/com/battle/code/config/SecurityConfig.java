@@ -3,10 +3,15 @@ package com.battle.code.config;
 import com.battle.code.security.JwtFilter;
 import com.battle.code.security.JwtTokenProvider;
 import com.battle.code.security.OAuth2SuccessHandler;
+import com.battle.code.security.AuthCookieProperties;
+import com.battle.code.security.JwtProperties;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -14,6 +19,7 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
@@ -24,11 +30,16 @@ import java.util.List;
 
 @Configuration
 @EnableWebSecurity
+@EnableConfigurationProperties({JwtProperties.class, AuthCookieProperties.class})
 @RequiredArgsConstructor
 public class SecurityConfig {
 
     private final OAuth2SuccessHandler oAuth2SuccessHandler;
     private final JwtTokenProvider jwtTokenProvider;
+    private final ObjectProvider<ClientRegistrationRepository> clientRegistrationRepository;
+
+    @Value("${cca.frontend-url:http://localhost:3000}")
+    private String frontendUrl;
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -49,9 +60,6 @@ public class SecurityConfig {
                         .requestMatchers("/api/match/**").authenticated()
                         .anyRequest().permitAll()
                 )
-                .oauth2Login(oauth2 -> oauth2
-                        .successHandler(oAuth2SuccessHandler)
-                )
                 .addFilterBefore(new JwtFilter(jwtTokenProvider), UsernamePasswordAuthenticationFilter.class)
 
                 // 인증 실패 시 리다이렉트 대신 401 에러 반환
@@ -63,6 +71,10 @@ public class SecurityConfig {
                         })
                 );
 
+        if (clientRegistrationRepository.getIfAvailable() != null) {
+            http.oauth2Login(oauth2 -> oauth2.successHandler(oAuth2SuccessHandler));
+        }
+
         return http.build();
     }
 
@@ -70,7 +82,7 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of("http://localhost:3000"));
+        config.setAllowedOrigins(List.of(frontendUrl));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true); // 쿠키 허용

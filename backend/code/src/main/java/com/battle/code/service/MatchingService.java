@@ -6,12 +6,15 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.util.Set;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class MatchingService {
+
+    private static final Duration MATCH_TTL = Duration.ofMinutes(30);
 
     private final RedisTemplate<String, Object> redisTemplate;
 
@@ -83,10 +86,11 @@ public class MatchingService {
         redisTemplate.opsForHash().put(key, "p2", p2Id);
         redisTemplate.opsForHash().put(key, "mapData", mapDataJson);
         redisTemplate.opsForHash().put(key, "status", "PLAYING");
+        redisTemplate.expire(key, MATCH_TTL);
 
         // 유저 -> 매치ID 매핑 (접속 종료 처리용)
-        redisTemplate.opsForValue().set("user_session:" + p1Id, matchId);
-        redisTemplate.opsForValue().set("user_session:" + p2Id, matchId);
+        redisTemplate.opsForValue().set("user_session:" + p1Id, matchId, MATCH_TTL);
+        redisTemplate.opsForValue().set("user_session:" + p2Id, matchId, MATCH_TTL);
 
         log.info("Match Room Created in Redis: {}", matchId);
     }

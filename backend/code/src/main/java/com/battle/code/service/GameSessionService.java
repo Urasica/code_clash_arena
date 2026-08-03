@@ -6,13 +6,18 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class GameSessionService {
+
+    private static final Duration SESSION_TTL = Duration.ofMinutes(30);
 
     private final RedisTemplate<String, Object> redisTemplate;
     private final LandGrabService landGrabService;
@@ -26,6 +31,11 @@ public class GameSessionService {
         // 유효성 검사 및 역할(p1/p2) 확인
         if (!Boolean.TRUE.equals(redisTemplate.opsForHash().hasKey(roomKey, "p1"))) {
             log.warn("Submission for non-existent or expired match: {}", matchId);
+            return;
+        }
+
+        if (Boolean.TRUE.equals(redisTemplate.opsForHash().hasKey(roomKey, "resolution"))) {
+            log.info("Ignoring submission after match resolution started: {}", matchId);
             return;
         }
 
@@ -58,8 +68,14 @@ public class GameSessionService {
         boolean p2Ready = redisTemplate.opsForHash().hasKey(roomKey, "p2_code");
 
         if (p1Ready && p2Ready) {
-            log.info("All players ready in match {}. Starting execution!", matchId);
-            runPvPMatch(matchId, roomKey);
+            Boolean acquired = redisTemplate.opsForHash().putIfAbsent(roomKey, "resolution", "RUNNING");
+            if (Boolean.TRUE.equals(acquired)) {
+                redisTemplate.opsForHash().put(roomKey, "status", "RUNNING");
+                log.info("All players ready in match {}. Starting execution!", matchId);
+                runPvPMatch(matchId, roomKey);
+            } else {
+                log.info("Match {} execution was already started", matchId);
+            }
         } else {
             log.info("Waiting for opponent in match {}...", matchId);
         }
@@ -131,6 +147,21 @@ public class GameSessionService {
         String p1Id = (String) redisTemplate.opsForHash().get(roomKey, "p1");
         String p2Id = (String) redisTemplate.opsForHash().get(roomKey, "p2");
 
+        if (!disconnectedUserId.equals(p1Id) && !disconnectedUserId.equals(p2Id)) {
+            log.warn("Ignoring disconnect from non-player {} in match {}", disconnectedUserId, matchId);
+            return;
+        }
+
+        Boolean acquired = redisTemplate.opsForHash().putIfAbsent(
+                roomKey,
+                "resolution",
+                "DISCONNECTED:" + disconnectedUserId
+        );
+        if (!Boolean.TRUE.equals(acquired)) {
+            log.info("Disconnect ignored because match {} is already resolving", matchId);
+            return;
+        }
+
         // 코드 정보 조회 (제출 전 탈주 시 null)
         String p1Code = (String) redisTemplate.opsForHash().get(roomKey, "p1_code");
         String p1Lang = (String) redisTemplate.opsForHash().get(roomKey, "p1_lang");
@@ -163,15 +194,37 @@ public class GameSessionService {
         cleanupMatch(matchId, p1Id, p2Id);
     }
 
-    public void registerGameSession(String matchId, String sessionId) {
-        // 세션이 끊기면 해당 매치 기권패
-        redisTemplate.opsForValue().set("socket_game:" + sessionId, matchId);
+    public boolean registerGameSession(String matchId, String sessionId, String userId) {
+        String roomKey = "match_room:" + matchId;
+        String p1Id = String.valueOf(redisTemplate.opsForHash().get(roomKey, "p1"));
+        String p2Id = String.valueOf(redisTemplate.opsForHash().get(roomKey, "p2"));
+        if (!userId.equals(p1Id) && !userId.equals(p2Id)) {
+            log.warn("User {} cannot register a socket for match {}", userId, matchId);
+            return false;
+        }
+
+        redisTemplate.opsForValue().set("socket_game:" + sessionId, matchId, SESSION_TTL);
+        redisTemplate.opsForValue().set("match_socket:" + matchId + ":" + userId, sessionId, SESSION_TTL);
+        return true;
     }
 
     // 방 정리 헬퍼 메서드
     private void cleanupMatch(String matchId, String p1Id, String p2Id) {
         String roomKey = "match_room:" + matchId;
-        redisTemplate.delete(roomKey);
+        List<String> keys = new ArrayList<>(List.of(
+                roomKey,
+                "user_session:" + p1Id,
+                "user_session:" + p2Id,
+                "match_socket:" + matchId + ":" + p1Id,
+                "match_socket:" + matchId + ":" + p2Id
+        ));
+        for (String playerId : List.of(p1Id, p2Id)) {
+            Object sessionId = redisTemplate.opsForValue().get("match_socket:" + matchId + ":" + playerId);
+            if (sessionId != null) {
+                keys.add("socket_game:" + sessionId);
+            }
+        }
+        redisTemplate.delete(keys);
         log.info("Match room {} cleaned up.", matchId);
     }
 }

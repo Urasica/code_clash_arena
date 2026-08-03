@@ -67,14 +67,9 @@ const Lobby = ({ onStartGame, isLoggedIn, onRequestLogin, userInfo, onLogout }) 
 
     setIsSearching(true); // UI를 '매칭 중' 상태로 변경
 
-    const token = localStorage.getItem('token');
-
     // 1. 소켓 클라이언트 설정
     const client = new Client({
       webSocketFactory: () => new SockJS('http://localhost:8080/ws-stomp'), // 백엔드 주소
-      connectHeaders: {
-          Authorization: `Bearer ${token}` 
-      },
       debug: (str) => {
         console.log(str);
       },
@@ -99,7 +94,7 @@ const Lobby = ({ onStartGame, isLoggedIn, onRequestLogin, userInfo, onLogout }) 
         // 3. 대기열 참가 요청 전송
         client.publish({
             destination: '/app/match/join',
-            body: JSON.stringify({ userId: userInfo.userId }),
+            body: JSON.stringify({ gameType: 'land_grab' }),
         });
       },
       onStompError: (frame) => {
@@ -122,7 +117,7 @@ const Lobby = ({ onStartGame, isLoggedIn, onRequestLogin, userInfo, onLogout }) 
         // 취소 메시지 전송
         stompClient.current.publish({
             destination: '/app/match/cancel',
-            body: JSON.stringify({ userId: userInfo.userId }),
+            body: JSON.stringify({ gameType: 'land_grab' }),
         });
         // 연결 끊기
         stompClient.current.deactivate();

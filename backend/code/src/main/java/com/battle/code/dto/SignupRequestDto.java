@@ -4,17 +4,20 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import lombok.Setter;
 
 @Getter
-@Setter
 @NoArgsConstructor
-public class LoginRequestDto {
+public class SignupRequestDto {
+
     @NotBlank
-    @Size(max = 40)
+    @Size(min = 3, max = 40)
     private String username;
 
     @NotBlank
-    @Size(max = 100)
+    @Size(min = 8, max = 100)
     private String password;
+
+    @NotBlank
+    @Size(min = 2, max = 40)
+    private String nickname;
 }

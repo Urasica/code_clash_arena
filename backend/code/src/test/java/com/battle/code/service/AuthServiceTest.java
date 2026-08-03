@@ -2,13 +2,13 @@ package com.battle.code.service;
 
 import com.battle.code.domain.User;
 import com.battle.code.repository.UserRepository;
-import com.battle.code.security.JwtTokenProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.Optional;
@@ -26,9 +26,6 @@ class AuthServiceTest {
 
     @Mock
     private PasswordEncoder passwordEncoder;
-
-    @Mock
-    private JwtTokenProvider jwtTokenProvider;
 
     @InjectMocks
     private AuthService authService;
@@ -56,8 +53,8 @@ class AuthServiceTest {
                 .thenReturn(Optional.of(User.builder().username("player").build()));
 
         assertThatThrownBy(() -> authService.signup("player", "secret", "Player One"))
-                .isInstanceOf(RuntimeException.class)
-                .hasMessage("Already exists");
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Username already exists");
     }
 
     @Test
@@ -67,7 +64,7 @@ class AuthServiceTest {
         when(passwordEncoder.matches("wrong", "encoded-secret")).thenReturn(false);
 
         assertThatThrownBy(() -> authService.login("player", "wrong"))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("Invalid password");
+                .isInstanceOf(BadCredentialsException.class)
+                .hasMessage("Invalid username or password");
     }
 }

@@ -1,6 +1,7 @@
 package com.battle.code.config;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.simp.config.ChannelRegistration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
@@ -14,11 +15,14 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     private final StompHandler stompHandler;
 
+    @Value("${cca.frontend-url:http://localhost:3000}")
+    private String frontendUrl;
+
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         // 프론트엔드 연결 엔드포인트: ws://localhost:8080/ws-stomp
         registry.addEndpoint("/ws-stomp")
-                .setAllowedOriginPatterns("*") // CORS 허용 (로컬 개발용)
+                .setAllowedOrigins(frontendUrl)
                 .withSockJS(); // SockJS 지원
     }
 

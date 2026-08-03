@@ -1,0 +1,23 @@
+spring:
+  datasource:
+    url: ${DATABASE_URL:jdbc:mysql://localhost:3306/code_arena?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
+    username: ${DATABASE_USERNAME:cca}
+    password: ${DATABASE_PASSWORD:cca_dev}
+  jpa:
+    hibernate:
+      ddl-auto: ${JPA_DDL_AUTO:update}
+    open-in-view: false
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+cca:
+  frontend-url: ${FRONTEND_URL:http://localhost:3000}
+  jwt:
+    secret: ${JWT_SECRET:local-development-only-secret-change-me-32-bytes}
+    expiration: ${JWT_EXPIRATION:7d}
+  auth:
+    cookie:
+      secure: ${COOKIE_SECURE:false}
+      same-site: ${COOKIE_SAME_SITE:Lax}

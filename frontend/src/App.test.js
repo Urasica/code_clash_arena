@@ -34,5 +34,6 @@ test('restores a valid login session', async () => {
   render(<App />);
 
   expect(await screen.findByText(/ArenaTester/i)).toBeInTheDocument();
-  expect(localStorage.getItem('userId')).toBe('7');
+  expect(localStorage.getItem('token')).toBeNull();
+  expect(localStorage.getItem('userId')).toBeNull();
 });

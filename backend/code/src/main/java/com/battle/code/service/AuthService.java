@@ -2,8 +2,8 @@ package com.battle.code.service;
 
 import com.battle.code.domain.User;
 import com.battle.code.repository.UserRepository;
-import com.battle.code.security.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,13 +16,12 @@ public class AuthService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
-    private final JwtTokenProvider jwtTokenProvider;
 
     // 회원가입
     @Transactional
     public void signup(String username, String password, String nickname) {
         if (userRepository.findByUsername(username).isPresent()) {
-            throw new RuntimeException("Already exists");
+            throw new IllegalStateException("Username already exists");
         }
         userRepository.save(User.builder()
                 .username(username)
@@ -36,10 +35,10 @@ public class AuthService {
     // 로그인 (토큰 반환)
     public User login(String username, String password) {
         User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+                .orElseThrow(() -> new BadCredentialsException("Invalid username or password"));
 
         if (!passwordEncoder.matches(password, user.getPassword())) {
-            throw new IllegalArgumentException("Invalid password");
+            throw new BadCredentialsException("Invalid username or password");
         }
 
         return user; // User 객체 반환

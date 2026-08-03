@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j; // Log4j2 사용
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.stereotype.Controller;
 
+import java.security.Principal;
 import java.util.Map;
 
 @Slf4j
@@ -21,14 +22,8 @@ public class MatchingController {
      * payload: { "userId": 101, "gameType": "land_grab" }
      */
     @MessageMapping("/match/join")
-    public void joinQueue(Map<String, Object> payload) {
-        Object userIdObj = payload.get("userId");
-        if (!(userIdObj instanceof Number)) {
-            log.warn("Invalid join request: {}", payload);
-            return;
-        }
-
-        Long userId = ((Number) userIdObj).longValue();
+    public void joinQueue(Map<String, Object> payload, Principal principal) {
+        Long userId = Long.parseLong(principal.getName());
         String gameType = (String) payload.getOrDefault("gameType", "land_grab"); // 기본값
 
         log.info("[WebSocket] Join Request: User {} for Game {}", userId, gameType);
@@ -41,14 +36,8 @@ public class MatchingController {
      * payload: { "userId": 101, "gameType": "land_grab" }
      */
     @MessageMapping("/match/cancel")
-    public void cancelQueue(Map<String, Object> payload) {
-        Object userIdObj = payload.get("userId");
-        if (!(userIdObj instanceof Number)) {
-            log.warn("Invalid cancel request: {}", payload);
-            return;
-        }
-
-        Long userId = ((Number) userIdObj).longValue();
+    public void cancelQueue(Map<String, Object> payload, Principal principal) {
+        Long userId = Long.parseLong(principal.getName());
         String gameType = (String) payload.getOrDefault("gameType", "land_grab");
 
         log.info("[WebSocket] Cancel Request: User {} for Game {}", userId, gameType);
