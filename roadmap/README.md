@@ -17,6 +17,8 @@
 
 ## 마일스톤
 
+현재 진행 중: `API-01` 요청 DTO·validation·controller 오류 경계. 첫 구현 단위는 `afabaca`에서 완료했으며 engine 성공 결과 타입, STOMP validation 오류 frame, OpenAPI 계약이 남아 있다.
+
 ### M1. 배포 가능한 신뢰 경계
 
 목표는 실제 MySQL·Redis·Docker와 두 클라이언트를 묶었을 때 인증, 매칭, 제출, 종료가 일관되게 동작하는 상태다.

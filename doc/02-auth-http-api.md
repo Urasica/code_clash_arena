@@ -63,11 +63,14 @@ JWT subject와 Spring `UserDetails.username`은 로그인 ID가 아니라 DB `Us
 
 - signup: username 3~40, password 8~100, nickname 2~40.
 - login: username/password 필수 및 길이 검증.
+- AI compile/run: UUID matchId, 64,000자 이하 code, 지원 언어, 선택적 easy/normal/hard 난이도.
+- STOMP match/game 요청: land_grab gameType, UUID matchId, 필수 code와 지원 언어.
 - `GlobalExceptionHandler.ApiError`: `{code, message}`.
-- 처리 코드: `VALIDATION_ERROR`, `INVALID_CREDENTIALS`, `CONFLICT`, `BAD_REQUEST`, `NOT_FOUND`, `INTERNAL_ERROR`.
+- 처리 코드: `VALIDATION_ERROR`, `MALFORMED_REQUEST`, `INVALID_CREDENTIALS`, `CONFLICT`, `BAD_REQUEST`, `NOT_FOUND`, `EXECUTION_ERROR`, `EXECUTION_INTERRUPTED`, `INTERNAL_ERROR`.
+- 인증되지 않은 보호 endpoint는 `{code:"UNAUTHORIZED", message:"Authentication required"}`를 반환한다.
 - 예상하지 못한 예외 stack은 서버 로그에만 남기고 응답에는 일반 문구를 사용한다.
 
-Land Grab controller는 현재 일부 예외를 직접 catch하여 문자열 또는 `{error}`로 반환하므로 전역 오류 계약이 완전히 적용되지는 않는다.
+Land Grab controller는 실행 예외를 전역 handler에 위임한다. DB 결과 저장 실패는 사용자에게 engine 결과를 전달하기 위해 controller 내부에서 별도로 기록하고 성공 응답은 유지한다.
 
 ## Cookie/JWT 설정
 
@@ -88,9 +91,9 @@ Spring `ClientRegistrationRepository`가 있을 때만 `oauth2Login`을 활성�
 ## 현재 보안 경계와 제약
 
 - cookie JWT를 사용하지만 CSRF는 현재 비활성화되어 있다.
-- `LandGrabMatchController`의 wildcard `@CrossOrigin`은 중앙 credential CORS와 일관되지 않다.
 - rate limit, guest 만료, secret rotation 자동화가 없다.
 - 실제 Google OAuth claim 오류·계정 충돌 smoke가 없다.
-- `RunRequestDto`와 raw STOMP/engine payload validation이 부족하다.
+- engine 성공 결과와 server→client STOMP message는 아직 raw Map 기반이다.
+- STOMP validation 실패의 client error frame과 OpenAPI 성공 응답 계약은 아직 고정되지 않았다.
 
 후속 작업은 `API-01`, `SEC-01`, `AUTH-01`로 관리한다.

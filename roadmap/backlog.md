@@ -14,10 +14,13 @@
 
 ### API-01 요청·응답 DTO와 단일 오류 계약
 
-- 상태: READY
-- 근거: `RunRequestDto`에 validation이 없고 STOMP payload·엔진 결과가 raw `Map`이다. `LandGrabMatchController`가 예외를 직접 잡아 문자열/Map 응답을 섞고 `@CrossOrigin(origins = "*")`로 중앙 CORS 정책과 충돌한다.
+- 상태: IN_PROGRESS
+- 시작 근거: `RunRequestDto`에 validation이 없고 STOMP payload·엔진 결과가 raw `Map`이었다. `LandGrabMatchController`가 예외를 직접 잡아 문자열/Map 응답을 섞고 `@CrossOrigin(origins = "*")`로 중앙 CORS 정책과 충돌했다.
 - 범위: AI REST 요청, STOMP join/submit, 엔진 결과, 인증 실패와 실행 오류.
 - 구현 방향: 필수값·언어·난이도 enum DTO, `@Valid`, 엔진 결과 DTO, `GlobalExceptionHandler` 단일 `ApiError` 적용, controller wildcard CORS 제거.
+- 진행 커밋: `afabaca` (`feat: validate battle API requests`)
+- 완료된 범위: REST/STOMP 요청 DTO와 UUID·코드 크기·언어·난이도·gameType validation, wildcard CORS 제거, Land Grab controller 예외의 전역 handler 위임, malformed/execution/interrupted/unauthorized `ApiError` 계약과 테스트.
+- 남은 범위: engine 성공 결과·notification DTO, STOMP validation 오류 frame 계약, OpenAPI 문서와 전체 HTTP/STOMP serialization 계약 테스트.
 - 완료 조건: OpenAPI 또는 계약 테스트에서 정상/검증/인증/timeout/내부 오류 응답 스키마가 고정되고 stack·원시 예외 문구가 노출되지 않는다.
 
 ### EXEC-02 AI 작업공간 ownership·만료·고아 정리

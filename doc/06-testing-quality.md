@@ -9,7 +9,7 @@
 | 계층 | 위치 | 현재 수 | 주요 보장 |
 | --- | --- | --- | --- |
 | 프론트 단위/컴포넌트 | `frontend/src/**/*.test.js` | 5 tests | 익명/세션 복원, token localStorage 부재, AI/draw/disconnect 결과 표시 정책 |
-| 백엔드 context/단위 | `backend/code/src/test/java` | 17 tests | H2 context, STOMP 권한, JWT·cookie, auth, resolution, workspace, Docker 명령 |
+| 백엔드 context/단위 | `backend/code/src/test/java` | 27 tests | H2 context, 요청 DTO, REST 오류/401 계약, Principal 기반 STOMP controller, 구독 권한, JWT·cookie, auth, resolution, workspace, Docker 명령 |
 | 엔진 규칙 | `engine/tests/test_land_grab.py`, `test_referee.py` | 4 tests | turn timeout, 마지막 점수, 맵 속성, C compiler 분기 |
 | Docker 계약 | `engine/tests/test_runners_integration.py` | 2 tests | 5개 언어 compile과 50-turn run |
 
