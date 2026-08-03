@@ -1,5 +1,10 @@
 import React, { useState } from 'react';
-import axios from 'axios';
+import {
+  GOOGLE_LOGIN_URL,
+  login,
+  loginAsGuest,
+  signup,
+} from './features/auth/authApi';
 
 // [수정] onBack prop 추가 (로비로 돌아가기 기능)
 const LoginPage = ({ onLoginSuccess, onBack }) => {
@@ -12,9 +17,8 @@ const LoginPage = ({ onLoginSuccess, onBack }) => {
 
   const handleLocalAuth = async () => {
     try {
-      const endpoint = mode === 'login' ? '/api/auth/login' : '/api/auth/signup';
-      
-      await axios.post(`http://localhost:8080${endpoint}`, formData, { withCredentials: true });
+      const authenticate = mode === 'login' ? login : signup;
+      await authenticate(formData);
       
       if (mode === 'login') {
           onLoginSuccess();
@@ -32,7 +36,7 @@ const LoginPage = ({ onLoginSuccess, onBack }) => {
 
   const handleGuestLogin = async () => {
     try {
-      await axios.post('http://localhost:8080/api/auth/guest', {}, { withCredentials: true });
+      await loginAsGuest();
 
       onLoginSuccess();
     } catch (err) {
@@ -42,7 +46,7 @@ const LoginPage = ({ onLoginSuccess, onBack }) => {
   };
 
   const handleGoogleLogin = () => {
-    window.location.href = "http://localhost:8080/oauth2/authorization/google";
+    window.location.href = GOOGLE_LOGIN_URL;
   };
 
   return (

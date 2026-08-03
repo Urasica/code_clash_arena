@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'; // useRef 추가
-import { Client } from '@stomp/stompjs'; // STOMP 클라이언트
-import SockJS from 'sockjs-client';      // SockJS (WebSocket 호환성)
+import { createStompClient } from './shared/realtime/createStompClient';
 
 const Lobby = ({ onStartGame, isLoggedIn, onRequestLogin, userInfo, onLogout }) => {
   const [selectedGame, setSelectedGame] = useState(null);
@@ -68,8 +67,7 @@ const Lobby = ({ onStartGame, isLoggedIn, onRequestLogin, userInfo, onLogout }) 
     setIsSearching(true); // UI를 '매칭 중' 상태로 변경
 
     // 1. 소켓 클라이언트 설정
-    const client = new Client({
-      webSocketFactory: () => new SockJS('http://localhost:8080/ws-stomp'), // 백엔드 주소
+    const client = createStompClient({
       debug: (str) => {
         console.log(str);
       },

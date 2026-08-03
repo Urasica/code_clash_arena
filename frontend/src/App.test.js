@@ -1,13 +1,10 @@
 import { render, screen } from '@testing-library/react';
-import axios from 'axios';
 import App from './App';
+import { getSession } from './features/auth/authApi';
 
-jest.mock('axios', () => ({
-  __esModule: true,
-  default: {
-    get: jest.fn(),
-    post: jest.fn(),
-  },
+jest.mock('./features/auth/authApi', () => ({
+  getSession: jest.fn(),
+  logout: jest.fn(),
 }));
 
 beforeEach(() => {
@@ -17,7 +14,7 @@ beforeEach(() => {
 });
 
 test('shows the lobby for an anonymous visitor', async () => {
-  axios.get.mockRejectedValueOnce({ response: { status: 401 } });
+  getSession.mockRejectedValueOnce({ response: { status: 401 } });
 
   render(<App />);
 
@@ -26,7 +23,7 @@ test('shows the lobby for an anonymous visitor', async () => {
 });
 
 test('restores a valid login session', async () => {
-  axios.get.mockResolvedValueOnce({
+  getSession.mockResolvedValueOnce({
     status: 200,
     data: { userId: 7, nickname: 'ArenaTester', role: 'USER' },
   });

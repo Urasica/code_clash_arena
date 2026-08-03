@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useMemo, useState } from 'react';
 
 // --- Helper Functions (Drawing Logic) ---
 const drawGrid = (ctx, size, width, height) => {
@@ -80,7 +80,7 @@ const ReplayViewer = ({ gameData }) => {
   const [turn, setTurn] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   
-  const logs = gameData?.logs || [];
+  const logs = useMemo(() => gameData?.logs || [], [gameData]);
   const maxTurn = logs.length > 0 ? logs.length - 1 : 0;
   const boardSize = logs[0]?.board_size || 15;
 

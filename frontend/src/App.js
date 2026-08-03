@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
 import Lobby from './Lobby';
 import GameArena from './GameArena';
 import LoginPage from './LoginPage';
+import { getSession, logout } from './features/auth/authApi';
 
 function App() {
   const [view, setView] = useState('lobby'); // 'lobby', 'login', 'arena'
@@ -14,9 +14,7 @@ function App() {
   useEffect(() => {
      const checkLoginStatus = async () => {
          try {
-             const res = await axios.get('http://localhost:8080/api/auth/me', {
-                 withCredentials: true 
-             });
+             const res = await getSession();
 
              if (res.status === 200 && res.data.userId) {
                  console.log("Session Restored:", res.data);
@@ -35,7 +33,7 @@ function App() {
 
   const handleLoginSuccess = async () => {
     try {
-        const res = await axios.get('http://localhost:8080/api/auth/me', { withCredentials: true });
+        const res = await getSession();
         setIsLoggedIn(true);
         setUserInfo(res.data);
         setView('lobby'); 
@@ -46,7 +44,7 @@ function App() {
 
   const handleLogout = async () => {
     try {
-      await axios.post('http://localhost:8080/api/auth/logout', {}, { withCredentials: true });
+      await logout();
     } catch (err) {
       console.error("Logout request failed", err);
     } finally {

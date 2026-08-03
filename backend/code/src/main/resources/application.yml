@@ -14,6 +14,9 @@ spring:
 
 cca:
   frontend-url: ${FRONTEND_URL:http://localhost:3000}
+  engine:
+    image: ${ENGINE_IMAGE:code-battle-engine}
+    workspace: ${ENGINE_WORKSPACE:temp}
   jwt:
     secret: ${JWT_SECRET:local-development-only-secret-change-me-32-bytes}
     expiration: ${JWT_EXPIRATION:7d}
