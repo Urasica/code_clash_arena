@@ -1,6 +1,9 @@
 package com.battle.code.controller;
 
+import com.battle.code.dto.CompileResultDto;
+import com.battle.code.dto.MatchExecutionResultDto;
 import com.battle.code.dto.RunRequestDto;
+import com.battle.code.dto.StartMatchResponseDto;
 import com.battle.code.service.LandGrabService;
 import com.battle.code.service.MatchService;
 import jakarta.validation.Valid;
@@ -13,8 +16,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.Map;
-
 @RestController
 @RequestMapping("/api/match/land-grab")
 @RequiredArgsConstructor
@@ -26,17 +27,17 @@ public class LandGrabMatchController {
 
     // 매치 생성 (맵 받기)
     @PostMapping("/start")
-    public ResponseEntity<Map<String, Object>> startMatch() throws IOException, InterruptedException {
+    public ResponseEntity<StartMatchResponseDto> startMatch() throws IOException, InterruptedException {
         log.info("[LAND_GRAB_START] Request");
 
-        Map<String, Object> result = landGrabService.startMatch();
+        StartMatchResponseDto result = landGrabService.startMatch();
         log.info("[LAND_GRAB_START] Success");
         return ResponseEntity.ok(result);
     }
 
     //코드 제출 및 실행
     @PostMapping("/run")
-    public ResponseEntity<Map<String, Object>> runMatch(
+    public ResponseEntity<MatchExecutionResultDto> runMatch(
             @Valid @RequestBody RunRequestDto request,
             @AuthenticationPrincipal UserDetails userDetails
     ) throws IOException, InterruptedException {
@@ -51,14 +52,14 @@ public class LandGrabMatchController {
                 request.getLanguage(),
                 request.getDifficulty());
 
-        Map<String, Object> result = landGrabService.runMatch(
+        MatchExecutionResultDto result = landGrabService.runMatch(
                 request.getMatchId(),
                 request.getUserCode(),
                 request.getLanguage(),
                 request.getDifficulty()
         );
 
-        log.debug("[LAND_GRAB_RUN] Result keys={}", result.keySet());
+        log.debug("[LAND_GRAB_RUN] Winner={}, turns={}", result.winner(), result.totalTurns());
 
         if (userDetails != null) {
             try {
@@ -88,7 +89,7 @@ public class LandGrabMatchController {
     }
 
     @PostMapping("/compile")
-    public ResponseEntity<Map<String, Object>> compileMatch(
+    public ResponseEntity<CompileResultDto> compileMatch(
             @Valid @RequestBody RunRequestDto request
     ) throws IOException, InterruptedException {
 
@@ -99,7 +100,7 @@ public class LandGrabMatchController {
         log.info("[LAND_GRAB_COMPILE] Request - matchId={}, lang={}",
                 request.getMatchId(), language);
 
-        Map<String, Object> result = landGrabService.compileCode(
+        CompileResultDto result = landGrabService.compileCode(
                 request.getMatchId(),
                 request.getUserCode(),
                 language

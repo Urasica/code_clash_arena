@@ -93,7 +93,7 @@ Spring `ClientRegistrationRepository`가 있을 때만 `oauth2Login`을 활성�
 - cookie JWT를 사용하지만 CSRF는 현재 비활성화되어 있다.
 - rate limit, guest 만료, secret rotation 자동화가 없다.
 - 실제 Google OAuth claim 오류·계정 충돌 smoke가 없다.
-- engine 성공 결과와 server→client STOMP message는 아직 raw Map 기반이다.
-- STOMP validation 실패의 client error frame과 OpenAPI 성공 응답 계약은 아직 고정되지 않았다.
+- Land Grab 성공 응답은 `StartMatchResponseDto`, `CompileResultDto`, `MatchExecutionResultDto`로 고정되어 있으며 engine의 snake_case 필드도 직렬화 테스트로 보호한다.
+- STOMP validation 실패는 `/user/queue/errors`로 `{type:"ERROR", code:"VALIDATION_ERROR", message}`를 반환한다.
 
 후속 작업은 `API-01`, `SEC-01`, `AUTH-01`로 관리한다.

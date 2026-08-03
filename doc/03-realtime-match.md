@@ -26,10 +26,13 @@ HTTP handshake에서 JWT cookie가 인증되면 그 `Principal`이 STOMP session
 | client → server | `/app/game/join` | `{matchId}` |
 | client → server | `/app/game/submit` | `{matchId, code, language}` |
 | server → client | `/topic/game/{matchId}` | `NOTIFICATION`, `RESULT`, `ERROR` |
+| server → client | `/user/queue/errors` | STOMP validation `ERROR` |
 
 `MatchingController`와 `GameSocketController`는 `Principal.name`을 Long user ID로 사용한다.
 
 client→server payload는 record DTO와 Bean Validation을 사용한다. gameType은 `land_grab`, matchId는 UUID, code는 필수·최대 64,000자, language는 지원하는 5개 값으로 제한한다.
+
+server→client payload도 `MatchSuccessMessage`, `GameNotificationMessage`, `MatchExecutionResultDto`, `GameErrorMessage`로 고정한다. `RESULT`는 `winner`, `final_scores`, `total_turns`, `logs`, `p1_error`, `p2_error`를 사용하고 공개 오류 메시지는 내부 실행 경로와 예외 상세를 노출하지 않는다.
 
 ## 구독 권한
 

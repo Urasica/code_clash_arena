@@ -7,7 +7,7 @@
 
 | ID | 작업 | 상태 | 선행 |
 | --- | --- | --- | --- |
-| API-01 | 요청·응답 DTO와 단일 오류 계약 | IN_PROGRESS | 없음 |
+| API-01 | 요청·응답 DTO와 단일 오류 계약 | DONE | 없음 |
 | EXEC-02 | AI workspace ownership·TTL·고아 정리 | READY | API-01 request contract |
 | MATCH-01 | 비동기 실행과 명시적 상태 머신 | READY | API-01 |
 | MATCH-02 | 다중 인스턴스 매칭 원자성 | READY | MATCH-01 state vocabulary |
@@ -20,9 +20,8 @@
 ## API-01 요청·응답 계약
 
 - 시작 근거: REST/STOMP 요청과 engine 결과가 raw Map 중심이었고 controller별 오류 형식이 달랐다.
-- 진행 커밋: `afabaca` (`feat: validate battle API requests`)
-- 완료 범위: REST/STOMP 요청 DTO, UUID·코드 크기·언어·난이도·gameType validation, wildcard CORS 제거, malformed/execution/interrupted/unauthorized `ApiError`.
-- 남은 범위: engine 성공 결과·notification DTO, STOMP validation error frame, OpenAPI/serialization 계약 테스트.
+- 진행 커밋: `afabaca` (`feat: validate battle API requests`) 및 M1 API 계약 변경 집합.
+- 완료 범위: REST/STOMP 요청 DTO, UUID·코드 크기·언어·난이도·gameType validation, wildcard CORS 제거, malformed/execution/interrupted/unauthorized `ApiError`, engine 성공 결과·notification·error DTO, STOMP validation error frame, 직렬화 계약 테스트.
 - 완료 조건: 정상/검증/인증/timeout/내부 오류가 고정된 schema를 사용하고 원시 예외를 노출하지 않는다.
 
 ## EXEC-02 AI workspace 수명

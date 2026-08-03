@@ -1,5 +1,9 @@
 package com.battle.code.service;
 
+import com.battle.code.dto.CompileResultDto;
+import com.battle.code.dto.LandGrabMapDto;
+import com.battle.code.dto.MatchExecutionResultDto;
+import com.battle.code.dto.StartMatchResponseDto;
 import com.battle.code.execution.DockerMatchExecutor;
 import com.battle.code.execution.MatchWorkspaceManager;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -11,8 +15,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.UUID;
 
 @Slf4j
@@ -30,7 +32,7 @@ public class LandGrabService {
     private final DockerMatchExecutor dockerExecutor;
     private final MatchWorkspaceManager workspaceManager;
 
-    public Map<String, Object> startMatch() throws IOException, InterruptedException {
+    public StartMatchResponseDto startMatch() throws IOException, InterruptedException {
         String matchId = UUID.randomUUID().toString();
         Path matchDir = workspaceManager.resolve(matchId);
         try {
@@ -41,19 +43,17 @@ public class LandGrabService {
         }
     }
 
-    public Map<String, Object> generateTransientMap() throws IOException, InterruptedException {
+    public LandGrabMapDto generateTransientMap() throws IOException, InterruptedException {
         String matchId = UUID.randomUUID().toString();
         Path matchDir = workspaceManager.resolve(matchId);
         try {
-            Map<String, Object> map = initializeMap(matchId, matchDir);
-            map.remove("matchId");
-            return map;
+            return initializeMap(matchId, matchDir).map();
         } finally {
             workspaceManager.delete(matchDir);
         }
     }
 
-    private Map<String, Object> initializeMap(String matchId, Path matchDir) throws IOException, InterruptedException {
+    private StartMatchResponseDto initializeMap(String matchId, Path matchDir) throws IOException, InterruptedException {
         Files.createDirectories(matchDir);
         String output = dockerExecutor.execute(
                 matchDir, GAME_TYPE, "init", true, false, INIT_TIMEOUT_SECONDS
@@ -62,13 +62,11 @@ public class LandGrabService {
         if (output.isBlank()) {
             throw new IOException("Docker init output is empty.");
         }
-        Map<String, Object> mapData = objectMapper.readValue(output, Map.class);
-        Map<String, Object> response = new HashMap<>(mapData);
-        response.put("matchId", matchId);
-        return response;
+        LandGrabMapDto mapData = objectMapper.readValue(output, LandGrabMapDto.class);
+        return new StartMatchResponseDto(matchId, mapData.walls(), mapData.coins());
     }
 
-    public Map<String, Object> compileCode(String matchId, String userCode, String language) throws IOException, InterruptedException {
+    public CompileResultDto compileCode(String matchId, String userCode, String language) throws IOException, InterruptedException {
         Path matchDir = workspaceManager.resolve(matchId);
         if (!Files.exists(matchDir)) throw new RuntimeException("Match ID not found.");
 
@@ -77,10 +75,10 @@ public class LandGrabService {
         String output = dockerExecutor.execute(
                 matchDir, GAME_TYPE, "compile", false, true, COMPILE_TIMEOUT_SECONDS
         );
-        return objectMapper.readValue(output, Map.class);
+        return objectMapper.readValue(output, CompileResultDto.class);
     }
 
-    public Map<String, Object> runMatch(String matchId, String userCode, String language, String difficulty) throws IOException, InterruptedException {
+    public MatchExecutionResultDto runMatch(String matchId, String userCode, String language, String difficulty) throws IOException, InterruptedException {
         Path matchDir = workspaceManager.resolve(matchId);
         if (!Files.exists(matchDir)) throw new RuntimeException("Match ID not found.");
 
@@ -96,14 +94,14 @@ public class LandGrabService {
             String jsonOutput = dockerExecutor.execute(
                     matchDir, GAME_TYPE, "run", true, true, RUN_TIMEOUT_SECONDS
             );
-            return objectMapper.readValue(jsonOutput, Map.class);
+            return objectMapper.readValue(jsonOutput, MatchExecutionResultDto.class);
         } finally {
             workspaceManager.delete(matchDir);
         }
     }
 
     // PvP 매치 실행
-    public Map<String, Object> runPvPMatch(String matchId, String p1Code, String p1Lang, String p2Code, String p2Lang, String mapDataJson) throws IOException, InterruptedException {
+    public MatchExecutionResultDto runPvPMatch(String matchId, String p1Code, String p1Lang, String p2Code, String p2Lang, String mapDataJson) throws IOException, InterruptedException {
         Path matchDir = workspaceManager.resolve(matchId);
         if (!Files.exists(matchDir)) Files.createDirectories(matchDir);
 
@@ -120,7 +118,7 @@ public class LandGrabService {
             );
             log.debug("Docker result received for match {} ({} bytes)", matchId, jsonOutput.length());
 
-            return objectMapper.readValue(jsonOutput, Map.class);
+            return objectMapper.readValue(jsonOutput, MatchExecutionResultDto.class);
         } finally {
             workspaceManager.delete(matchDir);
         }

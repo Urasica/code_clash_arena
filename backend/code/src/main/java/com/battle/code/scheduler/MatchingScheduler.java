@@ -1,5 +1,7 @@
 package com.battle.code.scheduler;
 
+import com.battle.code.dto.LandGrabMapDto;
+import com.battle.code.dto.MatchSuccessMessage;
 import com.battle.code.service.LandGrabService;
 import com.battle.code.service.MatchingService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -10,9 +12,7 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 @Slf4j
@@ -52,7 +52,7 @@ public class MatchingScheduler {
 
                 try {
                     // 맵 생성
-                    Map<String, Object> mapData = new HashMap<>();
+                    LandGrabMapDto mapData = null;
                     if ("land_grab".equals(gameType)) {
                         mapData = generateValidLandGrabMap();
 
@@ -73,11 +73,11 @@ public class MatchingScheduler {
                     matchingService.createMatchRoom(matchId, gameType, user1Id, user2Id, mapJson);
 
                     // p1에게 전송
-                    MatchSuccessEvent eventP1 = new MatchSuccessEvent(matchId, user1Id, user2Id, mapData, "p1");
+                    MatchSuccessMessage eventP1 = new MatchSuccessMessage(matchId, user1Id, user2Id, mapData, "p1");
                     messagingTemplate.convertAndSend("/topic/match/" + user1Id, eventP1);
 
                     // P2에게 전송
-                    MatchSuccessEvent eventP2 = new MatchSuccessEvent(matchId, user1Id, user2Id, mapData, "p2");
+                    MatchSuccessMessage eventP2 = new MatchSuccessMessage(matchId, user1Id, user2Id, mapData, "p2");
                     messagingTemplate.convertAndSend("/topic/match/" + user2Id, eventP2);
 
                     log.info("Match Found! Game: {}, ID: {}", gameType, matchId);
@@ -97,13 +97,12 @@ public class MatchingScheduler {
         }
     }
 
-    private Map<String, Object> generateValidLandGrabMap() {
+    private LandGrabMapDto generateValidLandGrabMap() {
         for (int i = 0; i < 3; i++) {
             try {
-                Map<String, Object> map = landGrabService.generateTransientMap();
-                if (map != null && map.containsKey("walls") && map.containsKey("coins")) {
-                    List<?> walls = (List<?>) map.get("walls");
-                    if (!walls.isEmpty()) return map;
+                LandGrabMapDto map = landGrabService.generateTransientMap();
+                if (map != null && map.walls() != null && map.coins() != null) {
+                    if (!map.walls().isEmpty()) return map;
                 }
             } catch (Exception e) {
                 log.warn("⚠️ Map generation failed (attempt {}): {}", i+1, e.getMessage());
@@ -111,6 +110,4 @@ public class MatchingScheduler {
         }
         return null;
     }
-
-    public record MatchSuccessEvent(String matchId, String p1Id, String p2Id, Map<String, Object> mapData, String myRole) {}
 }

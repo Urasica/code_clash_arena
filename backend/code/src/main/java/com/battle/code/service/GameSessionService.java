@@ -1,5 +1,8 @@
 package com.battle.code.service;
 
+import com.battle.code.dto.GameErrorMessage;
+import com.battle.code.dto.GameNotificationMessage;
+import com.battle.code.dto.MatchExecutionResultDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -8,9 +11,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 @Slf4j
 @Service
@@ -57,11 +58,10 @@ public class GameSessionService {
         log.info("Code saved for {} in match {}", playerRole, matchId);
 
         // 상대에게 "제출 완료" 알림 (UI 업데이트용 - role 포함)
-        messagingTemplate.convertAndSend("/topic/game/" + matchId, Map.of(
-                "type", "NOTIFICATION",
-                "message", "PLAYER_SUBMITTED",
-                "role", playerRole
-        ));
+        messagingTemplate.convertAndSend(
+                "/topic/game/" + matchId,
+                GameNotificationMessage.playerSubmitted(playerRole)
+        );
 
         // 양쪽 다 제출했는지 확인 후 게임 시작
         boolean p1Ready = redisTemplate.opsForHash().hasKey(roomKey, "p1_code");
@@ -96,8 +96,9 @@ public class GameSessionService {
             String p2Id = (String) redisTemplate.opsForHash().get(roomKey, "p2");
 
             // Docker 엔진 실행 (LandGrabService)
-            Map<String, Object> result = landGrabService.runPvPMatch(matchId, p1Code, p1Lang, p2Code, p2Lang, mapDataJson);
-            result.put("type", "RESULT");
+            MatchExecutionResultDto result = landGrabService
+                    .runPvPMatch(matchId, p1Code, p1Lang, p2Code, p2Lang, mapDataJson)
+                    .asRealtimeResult();
 
             // [DB 저장] MatchService 호출 (정상 종료)
             try {
@@ -122,10 +123,10 @@ public class GameSessionService {
 
         } catch (Exception e) {
             log.error("🔥 PvP Execution Error: {}", e.getMessage());
-            messagingTemplate.convertAndSend("/topic/game/" + matchId, Map.of(
-                    "type", "ERROR",
-                    "error", "Execution Failed: " + e.getMessage()
-            ));
+            messagingTemplate.convertAndSend(
+                    "/topic/game/" + matchId,
+                    GameErrorMessage.executionFailed()
+            );
 
             String p1Id = (String) redisTemplate.opsForHash().get(roomKey, "p1");
             String p2Id = (String) redisTemplate.opsForHash().get(roomKey, "p2");
@@ -170,12 +171,7 @@ public class GameSessionService {
 
         String winnerRole = disconnectedUserId.equals(p1Id) ? "p2" : "p1";
 
-        Map<String, Object> result = new HashMap<>();
-        result.put("type", "RESULT");
-        result.put("winner", winnerRole);
-        result.put("reason", "OPPONENT_DISCONNECTED");
-        result.put("logs", null);
-        result.put("final_scores", Map.of("p1", 0, "p2", 0)); // 기본 점수
+        MatchExecutionResultDto result = MatchExecutionResultDto.disconnected(winnerRole);
 
         // [DB 저장] 기권패 기록
         try {
