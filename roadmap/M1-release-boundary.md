@@ -12,7 +12,7 @@
 | MATCH-01 | 비동기 실행과 명시적 상태 머신 | DONE | API-01 |
 | MATCH-02 | 다중 인스턴스 매칭 원자성 | DONE | MATCH-01 state vocabulary |
 | MATCH-03 | 다중 소켓 disconnect·cleanup | DONE | MATCH-01 |
-| EXEC-03 | 플레이어·심판 격리와 공정성 | READY | 실행 계약 테스트 |
+| EXEC-03 | 플레이어·심판 격리와 공정성 | DONE | 실행 계약 테스트 |
 | SEC-01 | CSRF·rate limit·운영 비밀 정책 | READY | API-01 |
 | DATA-01 | migration·제약조건·저장 일관성 | READY | 결과 DTO/state |
 | REL-01 | 실 인프라 M1 E2E | READY | 위 작업 전체 |
@@ -42,6 +42,7 @@
 
 - 근거: p1, p2, referee가 같은 container와 기본 root UID/file namespace를 공유한다.
 - 범위: player별 UID·runtime directory·process permission, root-only referee, read-only input, 공격 corpus.
+- 완료 범위: 입력 mount에서 private tmpfs로 코드를 복사하고 p1 UID 10001, p2 UID 10002로 compile/run한다. `/app` 심판 코드는 root 전용이며 플레이어 effective capability는 0이다. 상대·심판 읽기와 심판 signal permission 공격을 Docker 테스트로 고정했다.
 - 완료 조건: player가 상대 source/referee를 읽거나 수정하고 상대/referee process에 signal을 보낼 수 없으며 5개 언어 계약이 유지된다.
 
 ## SEC-01 cookie 인증 보안

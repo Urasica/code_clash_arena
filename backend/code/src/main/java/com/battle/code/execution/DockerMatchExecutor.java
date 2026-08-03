@@ -75,7 +75,13 @@ public class DockerMatchExecutor {
                 "--pids-limit", "128",
                 "--read-only",
                 "--tmpfs", "/tmp:rw,noexec,nosuid,size=64m",
+                "--tmpfs", "/run/players:rw,exec,nosuid,nodev,size=128m",
                 "--cap-drop", "ALL",
+                "--cap-add", "CHOWN",
+                "--cap-add", "DAC_READ_SEARCH",
+                "--cap-add", "KILL",
+                "--cap-add", "SETUID",
+                "--cap-add", "SETGID",
                 "--security-opt", "no-new-privileges"
         ));
         if (mountData) {

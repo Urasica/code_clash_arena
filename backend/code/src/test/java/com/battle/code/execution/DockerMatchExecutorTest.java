@@ -24,6 +24,12 @@ class DockerMatchExecutorTest {
         assertThat(command).containsSubsequence("--network", "none");
         assertThat(command).containsSubsequence("--memory", "512m");
         assertThat(command).contains("--read-only", "ALL", "no-new-privileges");
+        assertThat(command).contains("/run/players:rw,exec,nosuid,nodev,size=128m");
+        assertThat(command).containsSubsequence("--cap-add", "CHOWN");
+        assertThat(command).containsSubsequence("--cap-add", "DAC_READ_SEARCH");
+        assertThat(command).containsSubsequence("--cap-add", "KILL");
+        assertThat(command).containsSubsequence("--cap-add", "SETUID");
+        assertThat(command).containsSubsequence("--cap-add", "SETGID");
         assertThat(command).anyMatch(value -> value.endsWith(":/app/data"));
         assertThat(command).anyMatch(value -> value.endsWith(":/app/players"));
         assertThat(command).endsWith("custom-engine", "python3", "referee.py", "land_grab", "run");

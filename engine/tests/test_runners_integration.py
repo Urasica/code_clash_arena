@@ -50,7 +50,13 @@ class RunnerIntegrationTest(unittest.TestCase):
             "--pids-limit", "128",
             "--read-only",
             "--tmpfs", "/tmp:rw,noexec,nosuid,size=64m",
+            "--tmpfs", "/run/players:rw,exec,nosuid,nodev,size=128m",
             "--cap-drop", "ALL",
+            "--cap-add", "CHOWN",
+            "--cap-add", "DAC_READ_SEARCH",
+            "--cap-add", "KILL",
+            "--cap-add", "SETUID",
+            "--cap-add", "SETGID",
             "--security-opt", "no-new-privileges",
         ]
         if include_data:
@@ -101,8 +107,63 @@ class RunnerIntegrationTest(unittest.TestCase):
                 payload = json.loads(result.stdout)
 
                 self.assertEqual(0, result.returncode, result.stderr)
+                self.assertIn("total_turns", payload, (payload, result.stderr))
                 self.assertEqual(50, payload["total_turns"])
                 self.assertIsNone(payload["p1_error"])
+
+    def test_player_cannot_read_opponent_or_referee_or_signal_referee(self):
+        attack = """
+import os
+import signal
+
+def strategy(my_pos, coins, walls, board_size):
+    with open('/proc/self/status', 'r', encoding='utf-8') as status_file:
+        status = status_file.read()
+    effective_caps = next(line.split()[1] for line in status.splitlines() if line.startswith('CapEff:'))
+    if int(effective_caps, 16) != 0:
+        raise RuntimeError('isolation breach: effective capabilities')
+    for protected_path in ('/run/players/p2/p2.py', '/app/referee.py'):
+        try:
+            with open(protected_path, 'r', encoding='utf-8') as protected:
+                protected.read(1)
+            raise RuntimeError('isolation breach: ' + protected_path)
+        except PermissionError:
+            pass
+    try:
+        os.kill(1, 0)
+        raise RuntimeError('isolation breach: referee signal')
+    except PermissionError:
+        pass
+    return 'STAY'
+"""
+        opponent = "import sys\nfor _ in sys.stdin:\n print('STAY', flush=True)\n"
+
+        with tempfile.TemporaryDirectory(dir=ENGINE_DIR) as temp_dir:
+            p1_dir = Path(temp_dir) / "p1"
+            p1_dir.mkdir()
+            template = (RUNNER_DIR / "python_runner.py").read_text(encoding="utf-8")
+            (p1_dir / "p1.py").write_text(
+                template.replace("%USER_CODE%", attack), encoding="utf-8"
+            )
+            p2_dir = Path(temp_dir) / "p2"
+            p2_dir.mkdir()
+            (p2_dir / "p2.py").write_text(opponent, encoding="utf-8")
+            (Path(temp_dir) / "map.json").write_text(
+                json.dumps({"walls": [], "coins": []}), encoding="utf-8"
+            )
+
+            result = subprocess.run(
+                self.docker_command(temp_dir, "run", include_data=True),
+                capture_output=True,
+                text=True,
+                timeout=40,
+            )
+            payload = json.loads(result.stdout)
+
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertIn("p1_error", payload, (payload, result.stderr))
+            self.assertIsNone(payload["p1_error"])
+            self.assertEqual(50, payload["total_turns"])
 
 
 if __name__ == "__main__":

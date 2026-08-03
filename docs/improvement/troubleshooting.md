@@ -90,3 +90,13 @@
 - 원인: PowerShell이 `npm.cmd`보다 `npm.ps1`을 먼저 선택한다.
 - 임시 조치 및 근본 해결: Windows 문서와 검증 명령에서 `npm.cmd`를 명시한다.
 - 검증 결과: 동일 셸에서 `npm.cmd test -- --watchAll=false`와 `npm.cmd run build`가 성공했다.
+
+## TS-010 capability 제거 후 플레이어 격리 초기화·종료 실패
+
+- 상태: 해결
+- 현상: private tmpfs를 도입한 첫 Docker 검증에서 모든 언어 compile이 `Operation not permitted`로 실패했고, 소유권 전달 뒤에는 run 종료 시 심판이 플레이어 process에 SIGTERM을 보낼 수 없었다.
+- 재현 조건: `--cap-drop ALL` container에서 root 심판이 `/run/players/p1|p2`를 서로 다른 UID로 `chown`하고 해당 UID process를 시작·종료한다.
+- 원인: root UID도 제거된 capability를 우회하지 못한다. 또한 디렉터리를 먼저 UID 10001/10002로 넘기면 DAC/FOWNER가 없는 심판이 다시 탐색·chmod할 수 없다.
+- 임시 조치: capability 전체 복원이나 player를 root로 되돌리는 조치는 적용하지 않았다.
+- 근본 해결: 파일과 하위 디렉터리를 먼저 처리하고 최상위 디렉터리 소유권을 마지막에 넘긴다. container에는 심판 초기화·감독에 필요한 `CHOWN`, `DAC_READ_SEARCH`, `KILL`, `SETUID`, `SETGID`만 추가하고 player UID 전환 뒤 effective capability가 0인지 검증한다.
+- 검증 결과: Python·Java·C·C++·JavaScript compile/run이 모두 50턴을 완료했고, player가 상대 source·`/app/referee.py`를 읽거나 PID 1에 signal 권한 검사를 통과하지 못함을 공격 테스트로 확인했다.

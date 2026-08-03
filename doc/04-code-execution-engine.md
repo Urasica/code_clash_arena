@@ -60,7 +60,9 @@ AI run은 p1 사용자 코드와 p2 Python AI를 쓴다. PvP run은 두 runner�
 | PID | `128` |
 | root filesystem | read-only |
 | temp | `/tmp`, 64 MiB, noexec/nosuid |
-| capabilities | 모두 drop |
+| player runtime | `/run/players`, 128 MiB, exec/nosuid/nodev |
+| referee capabilities | drop all 후 CHOWN, DAC_READ_SEARCH, KILL, SETUID, SETGID만 추가 |
+| player UID/capabilities | p1=10001, p2=10002, effective capabilities 0 |
 | security option | `no-new-privileges` |
 | stdout/stderr | stream당 최대 8 MiB |
 | backend init timeout | 15초 |
@@ -69,7 +71,7 @@ AI run은 p1 사용자 코드와 p2 Python AI를 쓴다. PvP run은 두 runner�
 | engine compiler timeout | 10초 |
 | player turn timeout | 0.5초 |
 
-container는 `--rm`으로 실행한다. data와 players는 mode에 필요한 경우에만 같은 host match directory를 `/app/data`, `/app/players`에 mount한다.
+container는 `--rm`으로 실행한다. data와 players는 mode에 필요한 경우에만 같은 host match directory를 `/app/data`, `/app/players`에 mount한다. 이 mount는 root 심판만 읽는다. 심판은 각 소스를 `/run/players/p1|p2`로 복사한 뒤 디렉터리와 파일을 해당 전용 UID에 넘기고 mode 700/600으로 잠근다. compile과 player process는 비어 있는 환경과 전용 HOME으로 UID 전환한 뒤 시작한다. `/app` 전체는 root만 읽을 수 있다.
 
 ## mode 계약
 
@@ -122,7 +124,7 @@ turn snapshot은 action, position, alive, coins, walls, board, scores, board_siz
 ## 현재 제약
 
 - 자원·timeout 값 일부가 코드 상수이고 match 결과에 engine image digest/policy version이 없다.
-- p1, p2, referee가 같은 container와 기본 root UID·파일 namespace를 공유한다. host 자원 격리는 적용되지만 플레이어 간 코드 기밀성·process 격리는 보장하지 않는다.
+- 심판과 플레이어는 같은 container PID namespace를 사용하므로 커널 수준의 완전한 container 분리는 아니며, UID·파일 mode·capability 경계로 상호 접근을 차단한다.
 - Redis가 장시간 중단되면 새 AI workspace lease를 만들 수 없으므로 `/start`도 실패하고 생성한 폴더를 되돌린다.
 - 사용자 코드와 replay의 보존/감사 정책이 실행 계층과 연결되어 있지 않다.
 - container 생성 비용과 동시 실행 capacity가 측정되지 않았다.

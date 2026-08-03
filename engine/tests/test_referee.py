@@ -21,7 +21,7 @@ class RefereeTest(unittest.TestCase):
             completed = Mock(returncode=0, stderr="")
 
             with patch.object(referee.subprocess, "run", return_value=completed) as run:
-                command = referee.prepare_player("p1", temp_dir)
+                command = referee.prepare_player("p1", temp_dir, isolate=False)
 
             self.assertEqual(str(player_dir / "p1.out"), command[0])
             self.assertEqual("gcc", run.call_args.args[0][0])
