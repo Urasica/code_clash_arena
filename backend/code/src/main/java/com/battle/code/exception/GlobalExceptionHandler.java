@@ -4,10 +4,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import java.io.IOException;
 import java.util.NoSuchElementException;
 
 @Slf4j
@@ -21,6 +23,11 @@ public class GlobalExceptionHandler {
                 .map(error -> error.getField() + ": " + error.getDefaultMessage())
                 .orElse("Request validation failed");
         return response(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", message);
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiError> handleMalformedRequest(HttpMessageNotReadableException exception) {
+        return response(HttpStatus.BAD_REQUEST, "MALFORMED_REQUEST", "Request body is malformed");
     }
 
     @ExceptionHandler(BadCredentialsException.class)
@@ -41,6 +48,19 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(NoSuchElementException.class)
     public ResponseEntity<ApiError> handleNotFound(NoSuchElementException exception) {
         return response(HttpStatus.NOT_FOUND, "NOT_FOUND", exception.getMessage());
+    }
+
+    @ExceptionHandler(IOException.class)
+    public ResponseEntity<ApiError> handleExecutionFailure(IOException exception) {
+        log.error("Match execution failed", exception);
+        return response(HttpStatus.INTERNAL_SERVER_ERROR, "EXECUTION_ERROR", "Match execution failed");
+    }
+
+    @ExceptionHandler(InterruptedException.class)
+    public ResponseEntity<ApiError> handleInterrupted(InterruptedException exception) {
+        Thread.currentThread().interrupt();
+        log.error("Match execution was interrupted", exception);
+        return response(HttpStatus.SERVICE_UNAVAILABLE, "EXECUTION_INTERRUPTED", "Match execution was interrupted");
     }
 
     @ExceptionHandler(Exception.class)
