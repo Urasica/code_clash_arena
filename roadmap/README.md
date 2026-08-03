@@ -8,12 +8,14 @@
 
 | 마일스톤 | 목표 | 상태 | 문서 |
 | --- | --- | --- | --- |
-| M1 | 실제 인프라에서 안전하고 일관된 매치 경계 | IN_PROGRESS | [M1-release-boundary.md](M1-release-boundary.md) |
+| M1 | 실제 인프라에서 안전하고 일관된 매치 경계 | DONE | [M1-release-boundary.md](M1-release-boundary.md) |
 | M2 | 관측 가능하고 자동 회귀에 강한 운영 | READY | [M2-operability-quality.md](M2-operability-quality.md) |
 | M3 | 기능 단위 유지보수 구조 | READY | [M3-maintainability.md](M3-maintainability.md) |
 | M4 | 플랫폼 현대화와 용량 최적화 | READY | [M4-modernization-scale.md](M4-modernization-scale.md) |
 
 마일스톤은 순서대로 완료한다. 뒤 마일스톤의 작업을 앞당길 수는 있지만, 앞 마일스톤의 완료 조건을 대신할 수 없다.
+
+현재 진행 기준은 M2다. M1 구현과 검증 결과는 [`../docs/improvement/m1-results.md`](../docs/improvement/m1-results.md)에 보존한다.
 
 ## 상태 규칙
 

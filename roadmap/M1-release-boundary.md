@@ -1,6 +1,6 @@
 # M1 — 배포 가능한 신뢰 경계
 
-- 상태: IN_PROGRESS
+- 상태: DONE
 - 목표: 실제 MySQL·Redis·Docker와 두 클라이언트를 묶었을 때 인증, 매칭, 제출, 실행, 저장, 종료가 안전하고 일관되게 동작한다.
 
 ## 작업 순서와 상태
@@ -15,7 +15,7 @@
 | EXEC-03 | 플레이어·심판 격리와 공정성 | DONE | 실행 계약 테스트 |
 | SEC-01 | CSRF·rate limit·운영 비밀 정책 | DONE | API-01 |
 | DATA-01 | migration·제약조건·저장 일관성 | DONE | 결과 DTO/state |
-| REL-01 | 실 인프라 M1 E2E | READY | 위 작업 전체 |
+| REL-01 | 실 인프라 M1 E2E | DONE | 위 작업 전체 |
 
 ## API-01 요청·응답 계약
 
@@ -62,7 +62,22 @@
 ## REL-01 M1 통합 검증
 
 - 범위: 실제 MySQL·Redis·Docker에서 signup/login/me/logout, AI start/compile/run/replay, PvP join/cancel/동시 submit/disconnect, Redis/workspace cleanup.
+- 완료 범위: Compose MySQL·Redis와 실제 `code-battle-engine`을 사용하는 opt-in 테스트 3개를 추가했다. HTTP 인증·AI 전체 흐름과 두 사용자 PvP queue/cancel/동시 submit/다중 탭 disconnect를 실행하고 DB aggregate 및 관련 key/workspace 제거를 확인했다.
+- 완료 커밋: `5668cbe` (`test: verify m1 on real infrastructure`).
 - 완료 조건: 반복 실행에서 올바른 winner, engine/DB 1회, 잔존 key/workspace 0, 고정 오류 계약을 확인한다.
+
+## 완료 커밋
+
+| 범위 | 커밋 |
+| --- | --- |
+| 마일스톤 문서 구조 | `25fe76c` |
+| API-01 | `aab28d6` |
+| EXEC-02 | `7db366f` |
+| MATCH-01~03 | `6195a1b` |
+| EXEC-03 | `1f11141` |
+| SEC-01 | `f1e6e38` |
+| DATA-01 | `34f6f5b` |
+| REL-01 | `5668cbe` |
 
 ## M1 공통 완료 조건
 
@@ -71,3 +86,11 @@
 - 실제 Redis/MySQL/Docker smoke가 통과한다.
 - 사용자 코드가 상대나 referee 경계를 침범하지 못한다.
 - migration과 운영 보안 설정이 문서만이 아니라 기동 시 검증된다.
+
+## 최종 판정
+
+- 프론트: 2 suites, 5 tests 및 production build PASS.
+- 백엔드: 빠른 회귀 57 PASS, 실제 인프라 3 PASS, 배포 JAR package PASS.
+- 엔진: 규칙·5언어·격리 공격 7 PASS.
+- MySQL 8.4와 Redis 7.4 healthcheck PASS, Flyway V1 빈 DB와 legacy baseline upgrade PASS.
+- AI/PvP 종료 후 대상 match room, user mapping, socket mapping, AI lease, workspace 잔존 0.

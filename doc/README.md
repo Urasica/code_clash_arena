@@ -1,6 +1,6 @@
 # 현재 코드 설계 문서
 
-- 기준일: 2026-08-03
+- 기준일: 2026-08-04
 - 기준 브랜치: `codex/stage-2-improvements`
 - 성격: 목표 구조가 아니라 현재 코드가 실제로 수행하는 책임과 경계를 설명한다.
 
@@ -64,6 +64,6 @@ frontend pages
 | `matchId` | UUID 문자열. REST, Redis, 작업공간, DB `matchUuid`가 공유하는 매치 식별자 |
 | `p1`, `p2` | 엔진과 매치 room에서 사용하는 플레이어 역할. AI 대전 사용자는 항상 `p1` |
 | room | Redis hash `match_room:{matchId}` |
-| resolution | 대전 실행 또는 disconnect 종결을 한 번만 획득하기 위한 Redis hash field |
+| state transition | Redis Lua CAS로 `WAITING`부터 terminal 상태까지 한 번만 진행하는 전이 |
 | runner | 사용자 전략 함수를 표준 stdin/stdout 프로토콜에 연결하는 언어별 템플릿 |
 | replay | 턴별 위치·행동·보드·코인·점수를 담은 engine `logs` 배열 |

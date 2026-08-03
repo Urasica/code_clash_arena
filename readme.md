@@ -107,13 +107,17 @@ npm.cmd run build
 # 백엔드
 Set-Location ../backend/code
 .\mvnw.cmd test
+.\mvnw.cmd -DskipTests package
+
+# 실제 MySQL·Redis·Docker release 회귀
+.\mvnw.cmd "-Dcca.run.integration=true" "-Dtest=RealInfrastructureSmokeTest,FullStackAiFlowTest,FullStackPvpFlowTest" test
 
 # 엔진: code-battle-engine 이미지가 있으면 5개 언어 Docker 계약 테스트도 실행
 Set-Location ../..
 python -m unittest discover -s engine/tests -v
 ```
 
-현재 자동 검증 범위와 수동 시나리오는 [검증 기준선](docs/improvement/verification-baseline.md), 개선 내역과 남은 제한은 [2단계 결과](docs/improvement/phase-2-results.md)에 기록합니다.
+변경 전 기준은 [검증 기준선](docs/improvement/verification-baseline.md), 현재 M1 결과와 남은 제한은 [M1 완료 결과](docs/improvement/m1-results.md)에 기록합니다.
 
 ## 환경 변수와 운영 주의사항
 
@@ -125,12 +129,15 @@ python -m unittest discover -s engine/tests -v
 | `JWT_SECRET` | 로컬 개발 전용 값 | 운영에서는 32바이트 이상의 무작위 비밀로 반드시 교체 |
 | `JWT_EXPIRATION` | `7d` | JWT와 쿠키 수명 |
 | `COOKIE_SECURE`, `COOKIE_SAME_SITE` | `false`, `Lax` | HTTPS 운영에서는 `true`와 배포 구조에 맞는 SameSite 사용 |
+| `SECURITY_REQUIRE_ORIGIN` | `true` | 상태 변경 API의 Origin/Referer를 `FRONTEND_URL`과 비교 |
+| `RATE_LIMIT_*` | endpoint별 개발 기본값 | login/guest/compile/run Redis 고정 window 제한 |
 | `ENGINE_IMAGE` | `code-battle-engine` | 실행 엔진 이미지 |
 | `ENGINE_WORKSPACE` | `temp` | 매치별 임시 작업공간 루트 |
 | `REACT_APP_API_BASE_URL` | `http://localhost:8080` | 프론트 REST·SockJS 기준 주소 |
 
 - 백엔드는 Docker CLI를 직접 호출합니다. Docker socket을 외부에 노출하거나 백엔드 컨테이너에 무제한으로 마운트하지 마세요.
-- 운영에서는 `JPA_DDL_AUTO=validate`와 별도 마이그레이션 도구 사용을 권장합니다.
+- Flyway가 vendor별 V1을 적용하고 Hibernate는 항상 `ddl-auto=validate`로 schema를 검사합니다. 운영 배포 전 DB backup과 migration 권한을 확인하고 적용된 migration 파일은 수정하지 마세요.
+- 브라우저 밖에서 `/api/**` 상태 변경 요청을 보내는 운영 도구도 `FRONTEND_URL`과 같은 `Origin` header를 보내야 합니다.
 - 엔진 컨테이너는 네트워크 없음, 0.5 CPU, 512 MiB, PID 128, 읽기 전용 rootfs로 실행됩니다. 정책 변경 시 실행기 테스트와 운영 문서를 함께 갱신하세요.
 - Redis 매치 데이터는 30분, WebSocket 세션은 2시간 TTL을 사용합니다. 예상 최대 대전 시간과 장애 복구 정책에 맞춰 함께 조정해야 합니다.
 - `.env`, OAuth 비밀, 실제 JWT 비밀과 사용자 제출 코드는 커밋하지 마세요.

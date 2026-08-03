@@ -100,3 +100,13 @@
 - 임시 조치: capability 전체 복원이나 player를 root로 되돌리는 조치는 적용하지 않았다.
 - 근본 해결: 파일과 하위 디렉터리를 먼저 처리하고 최상위 디렉터리 소유권을 마지막에 넘긴다. container에는 심판 초기화·감독에 필요한 `CHOWN`, `DAC_READ_SEARCH`, `KILL`, `SETUID`, `SETGID`만 추가하고 player UID 전환 뒤 effective capability가 0인지 검증한다.
 - 검증 결과: Python·Java·C·C++·JavaScript compile/run이 모두 50턴을 완료했고, player가 상대 source·`/app/referee.py`를 읽거나 PID 1에 signal 권한 검사를 통과하지 못함을 공격 테스트로 확인했다.
+
+## TS-011 실제 PvP 통합 테스트의 첫 queue join 거부
+
+- 상태: 해결
+- 현상: 새 MySQL 사용자로 실행한 PvP 통합 테스트의 첫 `joinQueue`가 `User is already assigned to a match`로 종료됐다.
+- 재현 조건: DB test row는 삭제됐지만 동일 auto-increment ID를 사용했던 개발 실행의 `user_session:{id}` 또는 `match_reservation:{id}`가 Redis에 남아 있는 환경에서 테스트한다.
+- 원인: MySQL 행과 Redis 세션의 수명을 독립적으로 수동 조작한 테스트 환경에서 ID가 재사용됐다. 매칭 Lua는 실제 활성 배정과 구분할 수 없으므로 안전하게 queue 진입을 거부했다.
+- 임시 조치: 검사 후 남은 테스트 key를 수동 확인했다.
+- 근본 해결: 실제 인프라 테스트가 자신이 생성한 user ID의 queue/session/reservation key만 시작·종료 시 정리하도록 격리했다. 전체 Redis flush나 기존 DB 삭제는 사용하지 않는다.
+- 검증 결과: 재실행에서 join/cancel, 두 사용자 match, 동시 submit 1회, 다중 탭 disconnect와 match 관련 key 정리가 모두 통과했다.
