@@ -1,8 +1,36 @@
 import { render, screen } from '@testing-library/react';
 import App from './App';
+import { getSession } from './features/auth/authApi';
 
-test('renders learn react link', () => {
+jest.mock('./features/auth/authApi', () => ({
+  getSession: jest.fn(),
+  logout: jest.fn(),
+}));
+
+beforeEach(() => {
+  localStorage.clear();
+  jest.clearAllMocks();
+  window.history.replaceState({}, '', '/');
+});
+
+test('shows the lobby for an anonymous visitor', async () => {
+  getSession.mockRejectedValueOnce({ response: { status: 401 } });
+
   render(<App />);
-  const linkElement = screen.getByText(/learn react/i);
-  expect(linkElement).toBeInTheDocument();
+
+  expect(await screen.findByText(/코드 크래쉬 아레나/i)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /로그인 \/ 게스트/i })).toBeInTheDocument();
+});
+
+test('restores a valid login session', async () => {
+  getSession.mockResolvedValueOnce({
+    status: 200,
+    data: { userId: 7, nickname: 'ArenaTester', role: 'USER' },
+  });
+
+  render(<App />);
+
+  expect(await screen.findByText(/ArenaTester/i)).toBeInTheDocument();
+  expect(localStorage.getItem('token')).toBeNull();
+  expect(localStorage.getItem('userId')).toBeNull();
 });

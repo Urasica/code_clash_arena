@@ -1,13 +1,17 @@
 package com.battle.code.service;
 
-import com.battle.code.domain.*;
+import com.battle.code.domain.GameMatch;
+import com.battle.code.domain.MatchPlayer;
+import com.battle.code.domain.MatchReplay;
+import com.battle.code.domain.User;
+import com.battle.code.dto.MatchExecutionResultDto;
 import com.battle.code.repository.GameMatchRepository;
 import com.battle.code.repository.UserRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Map;
 
@@ -20,165 +24,115 @@ public class MatchService {
     private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
 
-    /**
-     * [PvP] 매치 결과 저장 (유저 vs 유저)
-     */
-    @Transactional
-    public void savePvPMatchResult(String matchId, Long p1Id, Long p2Id, Map<String, Object> resultData,
-                                   String p1Code, String p1Lang, String p2Code, String p2Lang) {
-
-        // 시스템 에러 체크
-        String systemError = (String) resultData.get("error");
-        if (systemError != null && !systemError.isEmpty()) {
-            log.warn("[MatchService] System error detected for match {}. Not saving.", matchId);
+    public void savePvPMatchResult(String matchId, Long p1Id, Long p2Id, MatchExecutionResultDto result,
+                                   String p1Code, String p1Lang, String p2Code, String p2Lang,
+                                   String mapDataJson) {
+        if (hasSystemError(result)) {
+            log.warn("System error detected for match {}. Result was not saved.", matchId);
             return;
         }
+        if (alreadySaved(matchId)) return;
 
-        // 유저 조회
         User p1User = userRepository.findById(p1Id)
-                .orElseThrow(() -> new RuntimeException("Player 1 not found: " + p1Id));
+                .orElseThrow(() -> new IllegalArgumentException("Player 1 not found: " + p1Id));
         User p2User = userRepository.findById(p2Id)
-                .orElseThrow(() -> new RuntimeException("Player 2 not found: " + p2Id));
+                .orElseThrow(() -> new IllegalArgumentException("Player 2 not found: " + p2Id));
+        GameMatch match = newMatch(matchId, "PVP", result, mapDataJson);
+        Map<String, Integer> scores = result.finalScores();
+        match.addPlayer(player(p1User, "p1", outcome("p1", result.winner(), result.p1Error()),
+                score(scores, "p1"), p1Lang, p1Code));
+        match.addPlayer(player(p2User, "p2", outcome("p2", result.winner(), result.p2Error()),
+                score(scores, "p2"), p2Lang, p2Code));
+        if (persistOnce(match)) {
+            log.info("PvP match saved. matchId={}, winner={}", matchId, result.winner());
+        }
+    }
 
-        // 결과 데이터 파싱 (Null Safety)
-        String winner = (String) resultData.get("winner"); // "p1", "p2", "draw"
-        String reason = (String) resultData.get("reason"); // "OPPONENT_DISCONNECTED" 등
-        Map<String, Integer> scores = (Map<String, Integer>) resultData.get("final_scores");
+    public void saveMatchResult(Long userId, String matchId, MatchExecutionResultDto result,
+                                String userCode, String language, String difficulty,
+                                String mapDataJson) {
+        if (hasSystemError(result)) {
+            log.warn("System error detected for match {}. Result was not saved.", matchId);
+            return;
+        }
+        if (alreadySaved(matchId)) return;
 
-        int p1Score = (scores != null && scores.containsKey("p1")) ? scores.get("p1") : 0;
-        int p2Score = (scores != null && scores.containsKey("p2")) ? scores.get("p2") : 0;
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+        GameMatch match = newMatch(matchId, "AI", result, mapDataJson);
+        Map<String, Integer> scores = result.finalScores();
+        match.addPlayer(player(user, "p1", outcome("p1", result.winner(), result.p1Error()),
+                score(scores, "p1"), language, userCode));
+        match.addPlayer(player(null, "p2", outcome("p2", result.winner(), result.p2Error()),
+                score(scores, "p2"), "python", "AI-" + difficulty.toUpperCase()));
+        if (persistOnce(match)) {
+            log.info("AI match saved. matchId={}, winner={}", matchId, result.winner());
+        }
+    }
 
-        // GameMatch 생성
+    private GameMatch newMatch(String matchId, String mode, MatchExecutionResultDto result, String mapDataJson) {
+        if (mapDataJson == null || mapDataJson.isBlank()) {
+            throw new IllegalArgumentException("Match map data is required.");
+        }
         GameMatch match = GameMatch.builder()
                 .matchUuid(matchId)
                 .gameType("LAND_GRAB")
-                .mode("PVP")
+                .mode(mode)
+                .mapData(mapDataJson)
                 .build();
-
-        // 로그 저장 (탈주 시 로그 없음)
-        if (resultData.get("logs") != null) {
+        if (result.logs() != null) {
             try {
-                String fullLogJson = objectMapper.writeValueAsString(resultData.get("logs"));
-                MatchReplay replay = MatchReplay.builder()
-                        .fullLog(fullLogJson)
-                        .build();
-                match.setReplay(replay);
-            } catch (Exception e) {
-                log.error("Failed to serialize match logs", e);
+                match.setReplay(MatchReplay.builder()
+                        .fullLog(objectMapper.writeValueAsString(result.logs()))
+                        .build());
+            } catch (Exception exception) {
+                log.warn("Could not serialize replay for match {}", matchId, exception);
             }
         }
-
-        // 플레이어 1 기록
-        String p1Result = determineResult("p1", winner, reason, resultData.get("p1_error") != null);
-        match.addPlayer(MatchPlayer.builder()
-                .user(p1User)
-                .playerIndex("p1")
-                .result(p1Result)
-                .score(p1Score)
-                .language(p1Lang)
-                .submittedCode(p1Code)
-                .build());
-
-        // 플레이어 2 기록
-        String p2Result = determineResult("p2", winner, reason, resultData.get("p2_error") != null);
-        match.addPlayer(MatchPlayer.builder()
-                .user(p2User)
-                .playerIndex("p2")
-                .result(p2Result)
-                .score(p2Score)
-                .language(p2Lang)
-                .submittedCode(p2Code)
-                .build());
-
-        // 저장
-        matchRepository.save(match);
-        log.info("PvP Match Saved! ID: {}, Winner: {}", match.getId(), winner);
+        return match;
     }
 
-    // 승패 판정 헬퍼
-    private String determineResult(String playerRole, String winner, String reason, boolean hasError) {
-        if (hasError) return "LOSE"; // 런타임 에러
-        if ("draw".equalsIgnoreCase(winner)) return "DRAW";
-        if (playerRole.equals(winner)) return "WIN";
-        return "LOSE";
-    }
-
-    @Transactional
-    public void saveMatchResult(Long userId, String matchId, Map<String, Object> resultData,
-                                String userCode, String language, String difficulty) {
-
-        // 에러 체크
-        String systemError = (String) resultData.get("error");
-
-        // 시스템 에러 시 저장 중단
-        if (systemError != null && !systemError.isEmpty()) {
-            System.out.println("[DEBUG] System error detected. Not saving.");
-            return;
-        }
-
-        // 유저 조회
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
-
-        // 결과 데이터 파싱
-        String winner = (String) resultData.get("winner"); // "p1", "p2", "draw"
-        Map<String, Integer> scores = (Map<String, Integer>) resultData.get("final_scores");
-
-        // GameMatch 생성 (공통 정보)
-        GameMatch match = GameMatch.builder()
-                .matchUuid(matchId)
-                .gameType("LAND_GRAB")
-                .mode("AI")
-                .build();
-
-        // 로그 분리 저장 (MatchReplay)
-        try {
-            // logs 배열을 JSON 문자열로 변환하여 저장
-            String fullLogJson = objectMapper.writeValueAsString(resultData.get("logs"));
-            MatchReplay replay = MatchReplay.builder()
-                    .fullLog(fullLogJson)
-                    .build();
-            match.setReplay(replay); // 연관관계 설정
-        } catch (Exception e) {
-            log.warn("save error: {}", e.getMessage());
-            // 로그 저장 실패해도 매치 기록은 남기도록 진행
-        }
-
-        // 플레이어 기록 (P1: 유저)
-        boolean p1Crashed = resultData.get("p1_error") != null;
-        String p1Result = "DRAW";
-        if (p1Crashed) p1Result = "LOSE"; // 런타이 에러 시 패배
-        else if ("p1".equals(winner)) p1Result = "WIN";
-        else if ("p2".equals(winner)) p1Result = "LOSE";
-
-        MatchPlayer p1 = MatchPlayer.builder()
+    private MatchPlayer player(User user, String index, String result, int score, String language, String code) {
+        return MatchPlayer.builder()
                 .user(user)
-                .playerIndex("p1")
-                .result(p1Result)
-                .score(scores != null ? scores.get("p1") : 0)
-                .language(language)
-                .submittedCode(userCode)
+                .playerIndex(index)
+                .result(result)
+                .score(score)
+                .language(language == null || language.isBlank() ? "unknown" : language)
+                .submittedCode(code == null ? "" : code)
                 .build();
-        match.addPlayer(p1);
+    }
 
-        // 플레이어 기록 (P2: AI)
-        String p2Result = "DRAW";
-        if ("p2".equals(winner)) p2Result = "WIN";
-        else if ("p1".equals(winner)) p2Result = "LOSE";
+    private boolean alreadySaved(String matchId) {
+        if (!matchRepository.existsByMatchUuid(matchId)) return false;
+        log.info("Match persistence skipped because it already exists. matchId={}", matchId);
+        return true;
+    }
 
-        MatchPlayer p2 = MatchPlayer.builder()
-                .user(null) // AI는 유저 없음
-                .playerIndex("p2")
-                .result(p2Result)
-                .score(scores != null ? scores.get("p2") : 0)
-                .language("python")
-                .submittedCode("AI-" + difficulty.toUpperCase()) // AI 난이도 기록
-                .build();
-        match.addPlayer(p2);
+    private boolean persistOnce(GameMatch match) {
+        try {
+            matchRepository.saveAndFlush(match);
+            return true;
+        } catch (DataIntegrityViolationException exception) {
+            if (matchRepository.existsByMatchUuid(match.getMatchUuid())) {
+                log.info("Concurrent duplicate match persistence skipped. matchId={}", match.getMatchUuid());
+                return false;
+            }
+            throw exception;
+        }
+    }
 
-        // 최종 저장 (Cascade 설정으로 match 저장 시 players, replay도 자동 저장됨)
-        matchRepository.save(match);
+    private boolean hasSystemError(MatchExecutionResultDto result) {
+        return result.error() != null && !result.error().isBlank();
+    }
 
-        log.info("Match Saved! ID: {}" , match.getId());
+    private int score(Map<String, Integer> scores, String role) {
+        return scores == null ? 0 : scores.getOrDefault(role, 0);
+    }
+
+    private String outcome(String role, String winner, String playerError) {
+        if (playerError != null) return "LOSE";
+        if ("draw".equalsIgnoreCase(winner)) return "DRAW";
+        return role.equals(winner) ? "WIN" : "LOSE";
     }
 }

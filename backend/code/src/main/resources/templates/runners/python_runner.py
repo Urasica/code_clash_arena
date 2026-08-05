@@ -24,7 +24,8 @@ def main():
 
             print(action)
             sys.stdout.flush()
-        except Exception:
+        except Exception as error:
+            print(str(error), file=sys.stderr, flush=True)
             break
 
 if __name__ == "__main__":

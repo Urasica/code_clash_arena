@@ -1,14 +1,17 @@
 package com.battle.code.controller;
 
+import com.battle.code.dto.GameJoinRequestDto;
+import com.battle.code.dto.GameSubmissionRequestDto;
 import com.battle.code.service.GameSessionService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
+import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
 import org.springframework.stereotype.Controller;
 
-import java.util.Map;
+import java.security.Principal;
 
 @Slf4j
 @Controller
@@ -19,14 +22,16 @@ public class GameSocketController {
 
     // 게임입장 처리
     @MessageMapping("/game/join")
-    public void joinGame(Map<String, Object> payload, SimpMessageHeaderAccessor accessor) {
-        String matchId = (String) payload.get("matchId");
-        String userId = (String) payload.get("userId");
+    public void joinGame(
+            @Valid @Payload GameJoinRequestDto request,
+            SimpMessageHeaderAccessor accessor,
+            Principal principal
+    ) {
         String sessionId = accessor.getSessionId();
 
-        if (matchId != null && sessionId != null) {
-            log.info("User {} joined Match {} (Session: {})", userId, matchId, sessionId);
-            gameSessionService.registerGameSession(matchId, sessionId);
+        if (sessionId != null) {
+            log.info("User {} joined Match {} (Session: {})", principal.getName(), request.matchId(), sessionId);
+            gameSessionService.registerGameSession(request.matchId(), sessionId, principal.getName());
         }
     }
 
@@ -35,21 +40,15 @@ public class GameSocketController {
      * 발행 주소: /app/game/submit
      */
     @MessageMapping("/game/submit")
-    public void submitCode(Map<String, Object> payload) {
-        try {
-            if (payload == null) return;
-            String matchId = (String) payload.get("matchId");
-            Object userIdObj = payload.get("userId");
-            String code = (String) payload.get("code");
-            String language = (String) payload.getOrDefault("language", "python");
+    public void submitCode(@Valid @Payload GameSubmissionRequestDto request, Principal principal) {
+        Long userId = Long.parseLong(principal.getName());
 
-            if (matchId == null || userIdObj == null || code == null) return;
-            Long userId = Long.parseLong(String.valueOf(userIdObj));
-
-            log.info("[PvP] Code Submitted - Match: {}, User: {}", matchId, userId);
-            gameSessionService.handleCodeSubmission(matchId, userId, code, language);
-        } catch (Exception e) {
-            log.error("Error in submitCode", e);
-        }
+        log.info("[PvP] Code Submitted - Match: {}, User: {}", request.matchId(), userId);
+        gameSessionService.handleCodeSubmission(
+                request.matchId(),
+                userId,
+                request.code(),
+                request.language()
+        );
     }
 }

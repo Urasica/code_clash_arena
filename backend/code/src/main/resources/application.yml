@@ -1,0 +1,52 @@
+spring:
+  datasource:
+    url: ${DATABASE_URL:jdbc:mysql://localhost:3306/code_arena?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
+    username: ${DATABASE_USERNAME:cca}
+    password: ${DATABASE_PASSWORD:cca_dev}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration/mysql
+    baseline-on-migrate: true
+    baseline-version: 0
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+cca:
+  frontend-url: ${FRONTEND_URL:http://localhost:3000}
+  engine:
+    image: ${ENGINE_IMAGE:code-battle-engine}
+    workspace: ${ENGINE_WORKSPACE:temp}
+    workspace-cleanup-enabled: ${ENGINE_WORKSPACE_CLEANUP_ENABLED:true}
+    workspace-idle-ttl: ${ENGINE_WORKSPACE_IDLE_TTL:30m}
+    workspace-cleanup-initial-delay: ${ENGINE_WORKSPACE_CLEANUP_INITIAL_DELAY:1m}
+    workspace-cleanup-interval: ${ENGINE_WORKSPACE_CLEANUP_INTERVAL:5m}
+  match:
+    queue-poll-interval: ${MATCH_QUEUE_POLL_INTERVAL:1s}
+    reconnect-grace: ${MATCH_RECONNECT_GRACE:5s}
+    executor:
+      core-size: ${MATCH_EXECUTOR_CORE_SIZE:2}
+      max-size: ${MATCH_EXECUTOR_MAX_SIZE:4}
+      queue-capacity: ${MATCH_EXECUTOR_QUEUE_CAPACITY:20}
+  jwt:
+    secret: ${JWT_SECRET:local-development-only-secret-change-me-32-bytes}
+    expiration: ${JWT_EXPIRATION:7d}
+  auth:
+    guest-ttl: ${GUEST_TTL:24h}
+    guest-cleanup-interval: ${GUEST_CLEANUP_INTERVAL:1h}
+    cookie:
+      secure: ${COOKIE_SECURE:false}
+      same-site: ${COOKIE_SAME_SITE:Lax}
+  security:
+    require-origin: ${SECURITY_REQUIRE_ORIGIN:true}
+    rate-limit:
+      window: ${RATE_LIMIT_WINDOW:1m}
+      login: ${RATE_LIMIT_LOGIN:10}
+      guest: ${RATE_LIMIT_GUEST:5}
+      compile: ${RATE_LIMIT_COMPILE:20}
+      run: ${RATE_LIMIT_RUN:10}

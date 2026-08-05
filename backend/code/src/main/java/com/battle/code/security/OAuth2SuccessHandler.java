@@ -2,7 +2,6 @@ package com.battle.code.security;
 
 import com.battle.code.domain.User;
 import com.battle.code.repository.UserRepository;
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -10,7 +9,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.authentication.SimpleUrlAuthenticationSuccessHandler;
 import org.springframework.stereotype.Component;
-import org.springframework.web.util.UriComponentsBuilder; // [추가]
+import org.springframework.beans.factory.annotation.Value;
 
 import java.io.IOException;
 
@@ -20,6 +19,10 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
 
     private final JwtTokenProvider jwtTokenProvider;
     private final UserRepository userRepository;
+    private final AuthCookieService authCookieService;
+
+    @Value("${cca.frontend-url:http://localhost:3000}")
+    private String frontendUrl;
 
     @Override
     public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response, Authentication authentication) throws IOException {
@@ -41,19 +44,8 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
         // JWT 생성
         String token = jwtTokenProvider.createToken(user.getId(), user.getRole().name());
 
-        // 쿠키 설정 (HTTP 요청용 - 유지)
-        Cookie cookie = new Cookie("accessToken", token);
-        cookie.setHttpOnly(true);
-        cookie.setPath("/");
-        cookie.setMaxAge(7 * 24 * 60 * 60);
-        response.addCookie(cookie);
+        authCookieService.addTokenCookie(response, token);
 
-        // 프론트엔드로 리다이렉트
-        String targetUrl = UriComponentsBuilder.fromUriString("http://localhost:3000")
-                .queryParam("accessToken", token)
-                .queryParam("userId", user.getId())
-                .build().toUriString();
-
-        getRedirectStrategy().sendRedirect(request, response, targetUrl);
+        getRedirectStrategy().sendRedirect(request, response, frontendUrl);
     }
 }

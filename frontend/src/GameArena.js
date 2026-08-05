@@ -1,10 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
 import Editor from "@monaco-editor/react"; 
-import { Client } from '@stomp/stompjs'; 
-import SockJS from 'sockjs-client';      
 import ReplayViewer from './ReplayViewer';
 import { TEMPLATES } from './CodeTemplates';
+import {
+  compileLandGrabCode,
+  runLandGrabMatch,
+  startLandGrabMatch,
+} from './features/landGrab/landGrabApi';
+import { getMatchOutcome } from './features/landGrab/matchOutcome';
+import { createStompClient } from './shared/realtime/createStompClient';
 
 const GameArena = ({ onBack, difficulty, matchData }) => {
   const [matchId, setMatchId] = useState(null);
@@ -22,6 +26,7 @@ const GameArena = ({ onBack, difficulty, matchData }) => {
   const [myRole, setMyRole] = useState(null); // [추가] 내 역할
 
   const stompClient = useRef(null);
+  const handleRunMatchRef = useRef(null);
 
   // 1. 초기화 & 모드 설정
   useEffect(() => {
@@ -40,7 +45,7 @@ const GameArena = ({ onBack, difficulty, matchData }) => {
       }
       
       initializeGameBoard(mapSource);
-      connectPvPSocket(matchData.matchId);
+      connectPvPSocket(matchData.matchId, matchData.myRole);
       setStatus('ready');
     } else {
       setMode('AI');
@@ -64,7 +69,7 @@ const GameArena = ({ onBack, difficulty, matchData }) => {
         setTimeLeft((prev) => prev - 1);
       }, 1000);
     } else if (timeLeft === 0 && status === 'ready') {
-      handleRunMatch(); 
+      handleRunMatchRef.current?.();
       alert("시간초과! 코드가 자동으로 제출되었습니다.");
     }
     return () => clearInterval(timer);
@@ -94,28 +99,21 @@ const GameArena = ({ onBack, difficulty, matchData }) => {
         board_size: boardSize, 
         walls: walls, 
         coins: coins,
-        p1: { pos: [0, 0] }, 
-        p2: { pos: [boardSize-1, boardSize-1] }, 
+      p1: { pos: [0, 0], alive: true },
+      p2: { pos: [boardSize-1, boardSize-1], alive: true },
         board: initialBoard
       }]
     });
   };
 
   // 4. WebSocket 연결
-  const connectPvPSocket = (id) => {
-    const token = localStorage.getItem('token');
-    const userId = localStorage.getItem('userId');
-
-    const client = new Client({
-      webSocketFactory: () => new SockJS('http://localhost:8080/ws-stomp'),
-      connectHeaders: {
-          Authorization: `Bearer ${token}` 
-      },
+  const connectPvPSocket = (id, role) => {
+    const client = createStompClient({
       onConnect: () => {
         console.log("✅ PvP Socket Connected");
         client.publish({
             destination: '/app/game/join',
-            body: JSON.stringify({ matchId: id, userId: userId })
+            body: JSON.stringify({ matchId: id })
         });
 
         client.subscribe(`/topic/game/${id}`, (message) => {
@@ -124,7 +122,7 @@ const GameArena = ({ onBack, difficulty, matchData }) => {
 
           if (res.type === 'NOTIFICATION' && res.message === 'PLAYER_SUBMITTED') {
              // 메시지에 담긴 role이 내 role과 다를 때만 '상대 제출'로 표시
-             if (res.role !== myRole) {
+             if (res.role !== role) {
                  setOpponentSubmitted(true);
              }
              return;
@@ -149,11 +147,7 @@ const GameArena = ({ onBack, difficulty, matchData }) => {
   const handleStartMatch = async () => {
     setLoading(true);
     try {
-      const res = await axios.post(
-        'http://localhost:8080/api/match/land-grab/start', 
-        {},
-        { withCredentials: true }
-      );
+      const res = await startLandGrabMatch();
       // 백엔드 구조 변경에 따라 res.data 자체가 map 정보를 포함 (matchId, walls, coins...)
       // 하지만 AI 모드는 여전히 {matchId, map: {...}} 구조일 수 있으므로 확인 필요
       // LandGrabService 수정으로 {matchId, walls, coins} 형태로 옴
@@ -181,23 +175,14 @@ const GameArena = ({ onBack, difficulty, matchData }) => {
     
     if (mode === 'PvP') {
         if (stompClient.current && stompClient.current.connected) {
-            let userId = localStorage.getItem('userId');
-            
-            // [방어] userId가 없으면 재시도 혹은 알림
-            if (!userId) {
-                console.error("❌ User ID missing. Prompting user...");
-                alert("로그인 정보가 확인되지 않습니다. 새로고침 후 다시 시도해주세요.");
-                return;
-            }
-
             setLoading(true); 
             setIsWaitingOpponent(true); 
+            setStatus('submitted');
 
             stompClient.current.publish({
                 destination: '/app/game/submit',
                 body: JSON.stringify({
                     matchId: matchId,
-                    userId: userId,
                     code: userCode,
                     language: language
                 })
@@ -212,25 +197,26 @@ const GameArena = ({ onBack, difficulty, matchData }) => {
     setGameData(null); 
     try {
       setLoading('COMPILING...');
-      const compileRes = await axios.post('http://localhost:8080/api/match/land-grab/compile', {
+      const compileRes = await compileLandGrabCode({
         matchId: matchId,
         userCode: userCode,
         language: language
-      }, { withCredentials: true });
+      });
 
       if (compileRes.data.status === 'error') {
         setGameData({ p1_error: compileRes.data.error });
+        setStatus('finished');
         setLoading(false);
         return;
       }
 
       setLoading('BATTLE...');
-      const runRes = await axios.post('http://localhost:8080/api/match/land-grab/run', {
+      const runRes = await runLandGrabMatch({
         matchId: matchId,
         userCode: userCode,
         language: language,
         difficulty: difficulty
-      }, { withCredentials: true });
+      });
       
       setGameData(runRes.data);
       setStatus('finished');
@@ -247,37 +233,14 @@ const GameArena = ({ onBack, difficulty, matchData }) => {
     setLoading(false);
   };
 
+  handleRunMatchRef.current = handleRunMatch;
+
   const renderResultOverlay = () => {
       // 게임이 안 끝났거나 데이터가 없으면 표시 안 함
       if (status !== 'finished' || !gameData) return null;
 
-      // 승패 판정 로직
-      const isWinner = gameData.winner === myRole;
-      const isDraw = gameData.winner === 'draw';
-      
-      // 표시할 텍스트 및 사유 결정
-      let title = "DEFEAT";
-      let color = "var(--danger)"; // 빨강
-      let reason = gameData.reason;
-
-      if (isWinner) {
-          title = "VICTORY";
-          color = "var(--success)"; // 초록 (또는 파랑)
-      } else if (isDraw) {
-          title = "DRAW";
-          color = "#aaa";
-      }
-
-      // 탈주 승리 특수 처리
-      if (gameData.reason === 'OPPONENT_DISCONNECTED') {
-          title = "VICTORY";
-          color = "var(--success)";
-          reason = "OPPONENT DISCONNECTED";
-      } else if (gameData.p1_error || gameData.p2_error) {
-          reason = "RUNTIME ERROR";
-      } else if (!reason) {
-          reason = "MATCH COMPLETED";
-      }
+      const playerRole = mode === 'AI' ? 'p1' : myRole;
+      const { title, color, reason } = getMatchOutcome(gameData, playerRole);
 
       return (
           <div style={{

@@ -1,15 +1,22 @@
 package com.battle.code.service;
 
+import com.battle.code.dto.CompileResultDto;
+import com.battle.code.dto.LandGrabMapDto;
+import com.battle.code.dto.MatchExecutionResultDto;
+import com.battle.code.dto.StartMatchResponseDto;
+import com.battle.code.execution.DockerMatchExecutor;
+import com.battle.code.execution.MatchWorkspaceManager;
+import com.battle.code.execution.WorkspaceLeaseService;
+import com.battle.code.execution.WorkspaceLeaseService.WorkspaceStatus;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import java.io.*;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.*;
-import java.util.HashMap;
-import java.util.Map;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.UUID;
 
 @Slf4j
@@ -17,112 +24,133 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class LandGrabService {
 
+    private static final String GAME_TYPE = "land_grab";
+    private static final int INIT_TIMEOUT_SECONDS = 15;
+    private static final int COMPILE_TIMEOUT_SECONDS = 20;
+    private static final int RUN_TIMEOUT_SECONDS = 40;
+
     private final CodeTemplateManager templateManager;
-    private final String GAME_TYPE = "land_grab";
     private final ObjectMapper objectMapper;
+    private final DockerMatchExecutor dockerExecutor;
+    private final MatchWorkspaceManager workspaceManager;
+    private final WorkspaceLeaseService leaseService;
 
-    public Map<String, Object> startMatch() throws IOException, InterruptedException {
+    public StartMatchResponseDto startMatch(long ownerId) throws IOException, InterruptedException {
         String matchId = UUID.randomUUID().toString();
-        Path matchDir = Paths.get(System.getProperty("user.dir"), "temp", matchId).toAbsolutePath();
+        Path matchDir = workspaceManager.resolve(matchId);
+        try {
+            StartMatchResponseDto response = initializeMap(matchId, matchDir);
+            leaseService.create(matchId, ownerId);
+            return response;
+        } catch (IOException | InterruptedException | RuntimeException exception) {
+            try {
+                leaseService.release(matchId);
+            } finally {
+                workspaceManager.delete(matchDir);
+            }
+            throw exception;
+        }
+    }
+
+    public LandGrabMapDto generateTransientMap() throws IOException, InterruptedException {
+        String matchId = UUID.randomUUID().toString();
+        Path matchDir = workspaceManager.resolve(matchId);
+        try {
+            return initializeMap(matchId, matchDir).map();
+        } finally {
+            workspaceManager.delete(matchDir);
+        }
+    }
+
+    private StartMatchResponseDto initializeMap(String matchId, Path matchDir) throws IOException, InterruptedException {
         Files.createDirectories(matchDir);
-
-        ProcessBuilder pb = new ProcessBuilder(
-                "docker", "run", "--rm",
-                "-v", matchDir.toString().replace("\\", "/") + ":/app/data",
-                "code-battle-engine",
-                "python3", "referee.py", GAME_TYPE, "init"
+        String output = dockerExecutor.execute(
+                matchDir, GAME_TYPE, "init", true, false, INIT_TIMEOUT_SECONDS
         );
-
-        String output = runProcessAndGetOutput(pb);
 
         if (output.isBlank()) {
-            throw new RuntimeException("Docker 'init' output is empty. Check log for details.");
+            throw new IOException("Docker init output is empty.");
+        }
+        LandGrabMapDto mapData = objectMapper.readValue(output, LandGrabMapDto.class);
+        return new StartMatchResponseDto(matchId, mapData.walls(), mapData.coins());
+    }
+
+    public CompileResultDto compileCode(String matchId, long ownerId, String userCode, String language) throws IOException, InterruptedException {
+        leaseService.requireOwnerAndTouch(matchId, ownerId, WorkspaceStatus.COMPILED);
+        Path matchDir = workspaceManager.resolve(matchId);
+        if (!Files.exists(matchDir)) {
+            leaseService.release(matchId);
+            throw new java.util.NoSuchElementException("Match workspace not found.");
         }
 
-        Map<String, Object> mapData = objectMapper.readValue(output, Map.class);
+        savePlayerCode(matchDir, "p1", language, userCode);
 
-        Map<String, Object> response = new HashMap<>(mapData);
-        response.put("matchId", matchId);
-
-        return response;
+        String output = dockerExecutor.execute(
+                matchDir, GAME_TYPE, "compile", false, true, COMPILE_TIMEOUT_SECONDS
+        );
+        return objectMapper.readValue(output, CompileResultDto.class);
     }
 
-    public Map compileCode(String matchId, String userCode, String language) throws IOException, InterruptedException {
-        Path matchDir = Paths.get(System.getProperty("user.dir"), "temp", matchId).toAbsolutePath();
-        if (!Files.exists(matchDir)) throw new RuntimeException("Match ID not found.");
+    public MatchRunOutcome runMatch(String matchId, long ownerId, String userCode, String language, String difficulty) throws IOException, InterruptedException {
+        leaseService.requireOwnerAndTouch(matchId, ownerId, WorkspaceStatus.RUNNING);
+        Path matchDir = workspaceManager.resolve(matchId);
 
-        String runner = templateManager.loadRunnerTemplate(language);
-        String finalCode = runner.replace("%USER_CODE%", userCode);
-        String p1File = language.equalsIgnoreCase("java") ? "Main.java" : "p1" + getExtension(language);
-        Files.writeString(matchDir.resolve(p1File), finalCode);
+        try {
+            if (!Files.exists(matchDir)) {
+                throw new java.util.NoSuchElementException("Match workspace not found.");
+            }
+            String mapDataJson = objectMapper.writeValueAsString(
+                    objectMapper.readTree(matchDir.resolve("map.json").toFile())
+            );
+            savePlayerCode(matchDir, "p1", language, userCode);
 
-        ProcessBuilder pb = new ProcessBuilder(
-                "docker", "run", "--rm",
-                "-v", matchDir.toString().replace("\\", "/") + ":/app/players",
-                "code-battle-engine",
-                "python3", "referee.py", GAME_TYPE, "compile"
-        );
+            String targetDifficulty = (difficulty != null) ? difficulty.toLowerCase() : "easy";
+            String aiCode = templateManager.loadAiCode(GAME_TYPE, targetDifficulty);
+            Path aiDir = matchDir.resolve("p2");
+            Files.createDirectories(aiDir);
+            Files.writeString(aiDir.resolve("p2.py"), aiCode, StandardCharsets.UTF_8);
 
-        String output = runProcessAndGetOutput(pb);
-        return objectMapper.readValue(output, Map.class);
-    }
-
-    public Map<String, Object> runMatch(String matchId, String userCode, String language, String difficulty) throws IOException, InterruptedException {
-        Path matchDir = Paths.get(System.getProperty("user.dir"), "temp", matchId).toAbsolutePath();
-        if (!Files.exists(matchDir)) throw new RuntimeException("Match ID not found.");
-
-        String runner = templateManager.loadRunnerTemplate(language);
-        String finalCode = runner.replace("%USER_CODE%", userCode);
-        String p1File = language.equalsIgnoreCase("java") ? "Main.java" : "p1" + getExtension(language);
-        Files.writeString(matchDir.resolve(p1File), finalCode);
-
-        String targetDifficulty = (difficulty != null) ? difficulty.toLowerCase() : "easy";
-        String aiCode = templateManager.loadAiCode(GAME_TYPE, targetDifficulty);
-        Files.writeString(matchDir.resolve("p2.py"), aiCode);
-
-        ProcessBuilder pb = new ProcessBuilder(
-                "docker", "run", "--rm",
-                "-v", matchDir.toString().replace("\\", "/") + ":/app/data",
-                "-v", matchDir.toString().replace("\\", "/") + ":/app/players",
-                "code-battle-engine",
-                "python3", "referee.py", GAME_TYPE, "run"
-        );
-
-        String jsonOutput = runProcessAndGetOutput(pb);
-        return objectMapper.readValue(jsonOutput, Map.class);
+            String jsonOutput = dockerExecutor.execute(
+                    matchDir, GAME_TYPE, "run", true, true, RUN_TIMEOUT_SECONDS
+            );
+            return new MatchRunOutcome(
+                    objectMapper.readValue(jsonOutput, MatchExecutionResultDto.class),
+                    mapDataJson
+            );
+        } finally {
+            try {
+                leaseService.release(matchId);
+            } finally {
+                workspaceManager.delete(matchDir);
+            }
+        }
     }
 
     // PvP 매치 실행
-    public Map<String, Object> runPvPMatch(String matchId, String p1Code, String p1Lang, String p2Code, String p2Lang, String mapDataJson) throws IOException, InterruptedException {
-        Path matchDir = Paths.get(System.getProperty("user.dir"), "temp", matchId).toAbsolutePath();
+    public MatchExecutionResultDto runPvPMatch(String matchId, String p1Code, String p1Lang, String p2Code, String p2Lang, String mapDataJson) throws IOException, InterruptedException {
+        Path matchDir = workspaceManager.resolve(matchId);
         if (!Files.exists(matchDir)) Files.createDirectories(matchDir);
 
-        // 맵 파일 저장
-        JsonNode rootNode = objectMapper.readTree(mapDataJson);
-        JsonNode mapToSave = rootNode.has("map") ? rootNode.get("map") : rootNode;
+        try {
+            JsonNode rootNode = objectMapper.readTree(mapDataJson);
+            JsonNode mapToSave = rootNode.has("map") ? rootNode.get("map") : rootNode;
+            objectMapper.writeValue(matchDir.resolve("map.json").toFile(), mapToSave);
 
-        objectMapper.writeValue(matchDir.resolve("map.json").toFile(), mapToSave);
+            savePlayerCode(matchDir, "p1", p1Lang, p1Code);
+            savePlayerCode(matchDir, "p2", p2Lang, p2Code);
 
-        // 플레이어 코드 저장
-        savePlayerCode(matchDir, "p1", p1Lang, p1Code);
-        savePlayerCode(matchDir, "p2", p2Lang, p2Code);
+            String jsonOutput = dockerExecutor.execute(
+                    matchDir, GAME_TYPE, "run", true, true, RUN_TIMEOUT_SECONDS
+            );
+            log.debug("Docker result received for match {} ({} bytes)", matchId, jsonOutput.length());
 
-        // Docker 실행
-        ProcessBuilder pb = new ProcessBuilder(
-                "docker", "run", "--rm",
-                "-v", matchDir.toString().replace("\\", "/") + ":/app/data",
-                "-v", matchDir.toString().replace("\\", "/") + ":/app/players",
-                "code-battle-engine",
-                "python3", "referee.py", GAME_TYPE, "run"
-        );
-
-        String jsonOutput = runProcessAndGetOutput(pb);
-        log.info("Docker Result (Raw): {}", jsonOutput);
-
-        return objectMapper.readValue(jsonOutput, Map.class);
+            return objectMapper.readValue(jsonOutput, MatchExecutionResultDto.class);
+        } finally {
+            workspaceManager.delete(matchDir);
+        }
     }
 
-    private void savePlayerCode(Path matchDir, String player, String lang, String code) throws IOException {
+    void savePlayerCode(Path matchDir, String player, String lang, String code) throws IOException {
         lang = (lang != null) ? lang.toLowerCase() : "python";
 
         Path playerDir = matchDir.resolve(player);
@@ -138,7 +166,7 @@ public class LandGrabService {
             fileName = player + getExtension(lang);
         }
 
-        Files.writeString(playerDir.resolve(fileName), finalCode);
+        Files.writeString(playerDir.resolve(fileName), finalCode, StandardCharsets.UTF_8);
     }
 
     private String getExtension(String language) {
@@ -153,15 +181,4 @@ public class LandGrabService {
         };
     }
 
-    private String runProcessAndGetOutput(ProcessBuilder pb) throws IOException, InterruptedException {
-        pb.redirectErrorStream(true);
-        Process process = pb.start();
-        String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        int exitCode = process.waitFor();
-
-        if (exitCode != 0) {
-            log.error("Docker execution failed (Exit Code: {}). Output:\n{}", exitCode, output);
-        }
-        return output.trim();
-    }
 }

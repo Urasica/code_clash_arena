@@ -1,93 +1,133 @@
 package com.battle.code.service;
 
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.core.ZSetOperations;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 
-import java.util.Set;
+import java.time.Duration;
+import java.util.List;
+import java.util.Optional;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class MatchingService {
+
+    private static final Duration MATCH_TTL = Duration.ofMinutes(30);
+    private static final Duration RESERVATION_TTL = Duration.ofMinutes(1);
+    private static final DefaultRedisScript<Long> JOIN_QUEUE_SCRIPT = new DefaultRedisScript<>("""
+            if redis.call('EXISTS', KEYS[2]) == 1 or redis.call('EXISTS', KEYS[3]) == 1 then
+                return -1
+            end
+            return redis.call('ZADD', KEYS[1], 'NX', ARGV[1], ARGV[2])
+            """, Long.class);
+    @SuppressWarnings("rawtypes")
+    private static final DefaultRedisScript<List> POP_PAIR_SCRIPT = new DefaultRedisScript<>("""
+            local pair = redis.call('ZRANGE', KEYS[1], 0, 1, 'WITHSCORES')
+            if #pair < 4 then return {} end
+            redis.call('SET', 'match_reservation:' .. pair[1], ARGV[1], 'EX', ARGV[2])
+            redis.call('SET', 'match_reservation:' .. pair[3], ARGV[1], 'EX', ARGV[2])
+            redis.call('ZREM', KEYS[1], pair[1], pair[3])
+            return pair
+            """, List.class);
+    private static final DefaultRedisScript<Long> RETURN_PAIR_SCRIPT = new DefaultRedisScript<>("""
+            redis.call('DEL', 'match_reservation:' .. ARGV[1], 'match_reservation:' .. ARGV[3])
+            redis.call('ZADD', KEYS[1], ARGV[2], ARGV[1], ARGV[4], ARGV[3])
+            return 1
+            """, Long.class);
+    private static final DefaultRedisScript<Long> CREATE_ROOM_SCRIPT = new DefaultRedisScript<>("""
+            redis.call('HSET', KEYS[1],
+                'gameType', ARGV[1], 'p1', ARGV[2], 'p2', ARGV[3],
+                'mapData', ARGV[4], 'status', ARGV[5])
+            redis.call('EXPIRE', KEYS[1], ARGV[6])
+            redis.call('SET', KEYS[2], ARGV[7], 'EX', ARGV[6])
+            redis.call('SET', KEYS[3], ARGV[7], 'EX', ARGV[6])
+            redis.call('DEL', KEYS[4], KEYS[5])
+            return 1
+            """, Long.class);
 
     private final RedisTemplate<String, Object> redisTemplate;
 
-    private String getQueueKey(String gameType) {
+    public MatchingService(RedisTemplate<String, Object> redisTemplate) {
+        this.redisTemplate = redisTemplate;
+    }
+
+    public void joinQueue(String gameType, Long userId) {
+        String user = userId.toString();
+        Long added = redisTemplate.execute(
+                JOIN_QUEUE_SCRIPT,
+                List.of(queueKey(gameType), "user_session:" + user, "match_reservation:" + user),
+                String.valueOf(System.currentTimeMillis()),
+                user
+        );
+        if (Long.valueOf(-1L).equals(added)) {
+            throw new IllegalStateException("User is already assigned to a match.");
+        }
+        if (Long.valueOf(1L).equals(added)) {
+            log.info("User {} joined {} queue", userId, gameType);
+        }
+    }
+
+    public void cancelQueue(String gameType, Long userId) {
+        redisTemplate.opsForZSet().remove(queueKey(gameType), userId.toString());
+    }
+
+    @SuppressWarnings("unchecked")
+    public Optional<MatchPair> popPair(String gameType, String reservationId) {
+        List<Object> pair = redisTemplate.execute(
+                POP_PAIR_SCRIPT,
+                List.of(queueKey(gameType)),
+                reservationId,
+                String.valueOf(RESERVATION_TTL.toSeconds())
+        );
+        if (pair == null || pair.size() < 4) {
+            return Optional.empty();
+        }
+        return Optional.of(new MatchPair(
+                new QueuedPlayer(String.valueOf(pair.get(0)), Double.parseDouble(String.valueOf(pair.get(1)))),
+                new QueuedPlayer(String.valueOf(pair.get(2)), Double.parseDouble(String.valueOf(pair.get(3))))
+        ));
+    }
+
+    public void returnPair(String gameType, MatchPair pair) {
+        redisTemplate.execute(
+                RETURN_PAIR_SCRIPT,
+                List.of(queueKey(gameType)),
+                pair.p1().userId(),
+                String.valueOf(pair.p1().score()),
+                pair.p2().userId(),
+                String.valueOf(pair.p2().score())
+        );
+    }
+
+    public void createMatchRoom(String matchId, String gameType, String p1Id, String p2Id, String mapDataJson) {
+        redisTemplate.execute(
+                CREATE_ROOM_SCRIPT,
+                List.of(
+                        "match_room:" + matchId,
+                        "user_session:" + p1Id,
+                        "user_session:" + p2Id,
+                        "match_reservation:" + p1Id,
+                        "match_reservation:" + p2Id
+                ),
+                gameType,
+                p1Id,
+                p2Id,
+                mapDataJson,
+                MatchStatus.WAITING.name(),
+                String.valueOf(MATCH_TTL.toSeconds()),
+                matchId
+        );
+        log.info("Match room {} created", matchId);
+    }
+
+    private String queueKey(String gameType) {
         return "match_queue:" + gameType;
     }
 
-    /**
-     * 대기열 참가
-     * - Key: userId
-     * - Score: 현재 시간 (System.currentTimeMillis())
-     * - 이미 있는 userId면 Score(시간)만 갱신되거나 유지
-     */
-    public void joinQueue(String gameType, Long userId) {
-        String key = getQueueKey(gameType);
-        Double score = redisTemplate.opsForZSet().score(key, userId.toString());
-
-        if (score == null) {
-            // 없을 때만 추가 (새로 줄 서기)
-            redisTemplate.opsForZSet().add(key, userId.toString(), System.currentTimeMillis());
-            log.info("[match_queue] User joined queue: {}", userId);
-        } else {
-            log.info("[match_queue] User already in queue: {}", userId);
-        }
+    public record QueuedPlayer(String userId, double score) {
     }
 
-    // 대기열 취소
-    public void cancelQueue(String gameType, Long userId) {
-        String key = getQueueKey(gameType);
-        redisTemplate.opsForZSet().remove(key, userId.toString());
-        log.info("[match_queue] User cancelled queue: {}", userId);
-    }
-
-    // 대기열 크기 확인
-    public Long getQueueSize(String gameType) {
-        return redisTemplate.opsForZSet().zCard(getQueueKey(gameType));
-    }
-
-    /**
-     * 유저 매칭
-     * - Score(시간)가 가장 작은(오래된) 유저를 꺼냄
-     * - TypedTuple을 반환하여 유저ID와 Score(입장시간)를 모두 가져옴 (롤백 대비)
-     */
-    public ZSetOperations.TypedTuple<Object> popUserWithScore(String gameType) {
-        return redisTemplate.opsForZSet().popMin(getQueueKey(gameType));
-    }
-
-    /**
-     * 롤백
-     * - 매칭 실패 시, 원래 기다리던 시간으로 다시 넣기
-     */
-    public void returnToQueue(String gameType, String userId, Double originalScore) {
-        String key = getQueueKey(gameType);
-        if (userId != null && originalScore != null) {
-            redisTemplate.opsForZSet().add(key, userId, originalScore);
-            log.info("↺ [Rollback] User {} returned to queue with score {}", userId, originalScore);
-        }
-    }
-
-    /**
-     *
-     * Key: match_room:{matchId}
-     * Fields: p1, p2, gameType, mapData, status, p1_code, p2_code
-     */
-    public void createMatchRoom(String matchId, String gameType, String p1Id, String p2Id, String mapDataJson) {
-        String key = "match_room:" + matchId;
-        redisTemplate.opsForHash().put(key, "gameType", gameType);
-        redisTemplate.opsForHash().put(key, "p1", p1Id);
-        redisTemplate.opsForHash().put(key, "p2", p2Id);
-        redisTemplate.opsForHash().put(key, "mapData", mapDataJson);
-        redisTemplate.opsForHash().put(key, "status", "PLAYING");
-
-        // 유저 -> 매치ID 매핑 (접속 종료 처리용)
-        redisTemplate.opsForValue().set("user_session:" + p1Id, matchId);
-        redisTemplate.opsForValue().set("user_session:" + p2Id, matchId);
-
-        log.info("Match Room Created in Redis: {}", matchId);
+    public record MatchPair(QueuedPlayer p1, QueuedPlayer p2) {
     }
 }
