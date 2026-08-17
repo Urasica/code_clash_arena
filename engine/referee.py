@@ -179,7 +179,10 @@ if __name__ == "__main__":
         game_module = importlib.import_module(f"games.{game_type}")
 
         if mode == "init":
-            game_module.init(MAP_FILE)
+            # The trusted host persists validated map data. Keeping init
+            # stdout-only avoids granting the sandbox write access to a
+            # runner-owned bind mount.
+            game_module.init()
 
         elif mode == "run":
             # [방어] 플레이어 준비 단계 분리 및 에러 핸들링 강화

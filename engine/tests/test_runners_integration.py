@@ -78,6 +78,21 @@ class RunnerIntegrationTest(unittest.TestCase):
             encoding="utf-8",
         )
 
+    def test_init_emits_map_without_writing_to_the_bind_mount(self):
+        with tempfile.TemporaryDirectory(dir=ENGINE_DIR) as temp_dir:
+            result = subprocess.run(
+                self.docker_command(temp_dir, "init"),
+                capture_output=True,
+                text=True,
+                timeout=25,
+            )
+            payload = json.loads(result.stdout)
+
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertEqual(45, len(payload["walls"]))
+            self.assertEqual(5, len(payload["coins"]))
+            self.assertFalse((Path(temp_dir) / "map.json").exists())
+
     def test_all_advertised_languages_compile(self):
         for language in RUNNER_FILES:
             with self.subTest(language=language), tempfile.TemporaryDirectory(dir=ENGINE_DIR) as temp_dir:

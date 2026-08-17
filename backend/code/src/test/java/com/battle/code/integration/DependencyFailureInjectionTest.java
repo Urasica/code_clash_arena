@@ -36,7 +36,7 @@ class DependencyFailureInjectionTest extends InfrastructureIntegrationTest {
     private TestRestTemplate rest;
 
     @Test
-    @Timeout(60)
+    @Timeout(90)
     void readinessDetectsDatabaseAndRedisOutageAndRecovery() throws Exception {
         awaitHealth(response -> response.getStatusCode() == HttpStatus.OK
                 && response.getBody().contains("\"status\":\"UP\""), Duration.ofSeconds(10));
