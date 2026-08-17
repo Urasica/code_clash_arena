@@ -1,6 +1,8 @@
 package com.battle.code.execution;
 
+import com.battle.code.observability.MatchTelemetry;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -20,13 +22,23 @@ import java.util.UUID;
 public class MatchWorkspaceManager {
 
     private final Path workspaceRoot;
+    private final MatchTelemetry telemetry;
 
-    public MatchWorkspaceManager(@Value("${cca.engine.workspace:temp}") String configuredRoot) {
+    @Autowired
+    public MatchWorkspaceManager(
+            @Value("${cca.engine.workspace:temp}") String configuredRoot,
+            MatchTelemetry telemetry
+    ) {
         Path root = Paths.get(configuredRoot);
         if (!root.isAbsolute()) {
             root = Paths.get(System.getProperty("user.dir")).resolve(root);
         }
         this.workspaceRoot = root.toAbsolutePath().normalize();
+        this.telemetry = telemetry;
+    }
+
+    public MatchWorkspaceManager(String configuredRoot) {
+        this(configuredRoot, MatchTelemetry.noOp());
     }
 
     public Path resolve(String matchId) {
@@ -51,17 +63,21 @@ public class MatchWorkspaceManager {
             return;
         }
 
+        boolean[] succeeded = {true};
         try (var paths = Files.walk(matchDir)) {
             paths.sorted(Comparator.reverseOrder()).forEach(path -> {
                 try {
                     Files.deleteIfExists(path);
                 } catch (IOException exception) {
+                    succeeded[0] = false;
                     log.warn("Failed to delete match workspace path {}", path, exception);
                 }
             });
         } catch (IOException exception) {
+            succeeded[0] = false;
             log.warn("Failed to clean match workspace {}", matchDir, exception);
         }
+        telemetry.workspaceCleanup(succeeded[0] ? "success" : "failure");
     }
 
     public List<Path> findOlderThan(Duration age) {
@@ -80,10 +96,12 @@ public class MatchWorkspaceManager {
                 } catch (IllegalArgumentException ignored) {
                     log.warn("Ignoring non-match directory below workspace root: {}", path);
                 } catch (IOException exception) {
+                    telemetry.workspaceCleanup("failure");
                     log.warn("Could not inspect workspace age: {}", path, exception);
                 }
             });
         } catch (IOException exception) {
+            telemetry.workspaceCleanup("failure");
             log.warn("Could not scan match workspace root {}", workspaceRoot, exception);
         }
         return expired;

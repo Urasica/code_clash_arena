@@ -110,3 +110,13 @@
 - 임시 조치: 검사 후 남은 테스트 key를 수동 확인했다.
 - 근본 해결: 실제 인프라 테스트가 자신이 생성한 user ID의 queue/session/reservation key만 시작·종료 시 정리하도록 격리했다. 전체 Redis flush나 기존 DB 삭제는 사용하지 않는다.
 - 검증 결과: 재실행에서 join/cancel, 두 사용자 match, 동시 submit 1회, 다중 탭 disconnect와 match 관련 key 정리가 모두 통과했다.
+
+## TS-012 Prometheus endpoint가 노출 목록에서 누락
+
+- 상태: 해결
+- 현상: actuator가 health와 info만 등록해 `/actuator/prometheus` 요청이 404 경로로 처리되고 공통 예외 handler를 거쳐 500을 반환했다.
+- 재현 조건: Prometheus registry 의존성을 추가한 초기 M2 설정으로 `ObservabilityIntegrationTest`를 실행한다.
+- 원인: registry가 runtime classpath에 있어도 현재 실행 설정에서는 Prometheus export auto-configuration이 활성화되지 않아 endpoint bean이 만들어지지 않았다.
+- 임시 조치: endpoint 테스트를 제외하거나 metric을 애플리케이션 API로 대신 노출하지 않았다.
+- 근본 해결: `management.prometheus.metrics.export.enabled=true`를 공유 설정에 명시하고 health, info, prometheus만 management port에 노출했다.
+- 검증 결과: 실제 MySQL·Redis·Docker image 환경에서 readiness 200/UP, Prometheus text metric, HTTP correlation header 계약이 함께 통과했다.

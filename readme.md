@@ -9,6 +9,7 @@
 - Monaco Editor와 턴별 리플레이
 - HttpOnly JWT 쿠키 기반 로컬·게스트·선택적 Google 로그인
 - CPU·메모리·PID·네트워크·실행 시간·출력 크기를 제한한 코드 실행
+- correlation/match ID가 포함된 JSON 로그와 readiness·Prometheus metric
 
 ## 구성
 
@@ -32,9 +33,11 @@ code_clash_arena/
 │  ├─ controller/         REST·STOMP 진입점
 │  ├─ service/            인증·매칭·게임 오케스트레이션
 │  ├─ execution/          Docker 실행과 임시 작업공간 관리
+│  ├─ observability/      correlation context, metric, engine readiness
 │  ├─ security/, config/  HTTP·JWT·OAuth2·STOMP·Redis 설정
 │  └─ domain/, repository/, dto/
 ├─ engine/                다중 언어 runner와 Land Grab 규칙
+├─ ops/prometheus/        초기 운영 경보 규칙
 ├─ doc/                   역할별 현재 코드 설계
 ├─ docs/                  완료된 분석·검증·개선 기록
 ├─ roadmap/               미완료 작업과 완료 조건
@@ -81,7 +84,7 @@ Set-Location backend/code
 .\mvnw.cmd spring-boot:run
 ```
 
-macOS/Linux에서는 `./mvnw spring-boot:run`을 사용합니다. 기본 주소는 `http://localhost:8080`입니다.
+macOS/Linux에서는 `./mvnw spring-boot:run`을 사용합니다. API 기본 주소는 `http://localhost:8080`, 내부 management 주소는 `http://localhost:8081`입니다.
 
 ### 4. 프론트엔드
 
@@ -110,7 +113,7 @@ Set-Location ../backend/code
 .\mvnw.cmd -DskipTests package
 
 # 실제 MySQL·Redis·Docker release 회귀
-.\mvnw.cmd "-Dcca.run.integration=true" "-Dtest=RealInfrastructureSmokeTest,FullStackAiFlowTest,FullStackPvpFlowTest" test
+.\mvnw.cmd "-Dcca.run.integration=true" "-Dtest=RealInfrastructureSmokeTest,FullStackAiFlowTest,FullStackPvpFlowTest,ObservabilityIntegrationTest" test
 
 # 엔진: code-battle-engine 이미지가 있으면 5개 언어 Docker 계약 테스트도 실행
 Set-Location ../..
@@ -133,6 +136,8 @@ python -m unittest discover -s engine/tests -v
 | `RATE_LIMIT_*` | endpoint별 개발 기본값 | login/guest/compile/run Redis 고정 window 제한 |
 | `ENGINE_IMAGE` | `code-battle-engine` | 실행 엔진 이미지 |
 | `ENGINE_WORKSPACE` | `temp` | 매치별 임시 작업공간 루트 |
+| `ENGINE_READINESS_TIMEOUT` | `3s` | Docker와 engine image readiness 검사 제한 시간 |
+| `MANAGEMENT_PORT` | `8081` | health·Prometheus 내부 endpoint 포트 |
 | `REACT_APP_API_BASE_URL` | `http://localhost:8080` | 프론트 REST·SockJS 기준 주소 |
 
 - 백엔드는 Docker CLI를 직접 호출합니다. Docker socket을 외부에 노출하거나 백엔드 컨테이너에 무제한으로 마운트하지 마세요.
@@ -141,3 +146,4 @@ python -m unittest discover -s engine/tests -v
 - 엔진 컨테이너는 네트워크 없음, 0.5 CPU, 512 MiB, PID 128, 읽기 전용 rootfs로 실행됩니다. 정책 변경 시 실행기 테스트와 운영 문서를 함께 갱신하세요.
 - Redis 매치 데이터는 30분, WebSocket 세션은 2시간 TTL을 사용합니다. 예상 최대 대전 시간과 장애 복구 정책에 맞춰 함께 조정해야 합니다.
 - `.env`, OAuth 비밀, 실제 JWT 비밀과 사용자 제출 코드는 커밋하지 마세요.
+- `MANAGEMENT_PORT`는 인증 없이 상태와 metric을 제공하므로 외부에 공개하지 말고 내부 scrape 경계에서만 접근하세요. 기본 경보 규칙은 `ops/prometheus/alerts.yml`에 있습니다.

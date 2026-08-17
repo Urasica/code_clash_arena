@@ -5,24 +5,43 @@ import com.battle.code.domain.MatchPlayer;
 import com.battle.code.domain.MatchReplay;
 import com.battle.code.domain.User;
 import com.battle.code.dto.MatchExecutionResultDto;
+import com.battle.code.observability.MatchTelemetry;
 import com.battle.code.repository.GameMatchRepository;
 import com.battle.code.repository.UserRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.util.Map;
 
 @Service
 @Slf4j
-@RequiredArgsConstructor
 public class MatchService {
 
     private final GameMatchRepository matchRepository;
     private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
+    private final MatchTelemetry telemetry;
+
+    @Autowired
+    public MatchService(
+            GameMatchRepository matchRepository,
+            UserRepository userRepository,
+            ObjectMapper objectMapper,
+            MatchTelemetry telemetry
+    ) {
+        this.matchRepository = matchRepository;
+        this.userRepository = userRepository;
+        this.objectMapper = objectMapper;
+        this.telemetry = telemetry;
+    }
+
+    MatchService(GameMatchRepository matchRepository, UserRepository userRepository, ObjectMapper objectMapper) {
+        this(matchRepository, userRepository, objectMapper, MatchTelemetry.noOp());
+    }
 
     public void savePvPMatchResult(String matchId, Long p1Id, Long p2Id, MatchExecutionResultDto result,
                                    String p1Code, String p1Lang, String p2Code, String p2Lang,
@@ -110,15 +129,25 @@ public class MatchService {
     }
 
     private boolean persistOnce(GameMatch match) {
+        long startedAt = System.nanoTime();
+        String outcome = "failure";
         try {
             matchRepository.saveAndFlush(match);
+            outcome = "success";
             return true;
         } catch (DataIntegrityViolationException exception) {
             if (matchRepository.existsByMatchUuid(match.getMatchUuid())) {
+                outcome = "duplicate";
                 log.info("Concurrent duplicate match persistence skipped. matchId={}", match.getMatchUuid());
                 return false;
             }
             throw exception;
+        } finally {
+            telemetry.persistence(
+                    match.getMode(),
+                    outcome,
+                    Duration.ofNanos(Math.max(0, System.nanoTime() - startedAt))
+            );
         }
     }
 

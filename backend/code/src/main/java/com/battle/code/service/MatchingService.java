@@ -1,6 +1,8 @@
 package com.battle.code.service;
 
+import com.battle.code.observability.MatchTelemetry;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
@@ -47,9 +49,16 @@ public class MatchingService {
             """, Long.class);
 
     private final RedisTemplate<String, Object> redisTemplate;
+    private final MatchTelemetry telemetry;
 
-    public MatchingService(RedisTemplate<String, Object> redisTemplate) {
+    @Autowired
+    public MatchingService(RedisTemplate<String, Object> redisTemplate, MatchTelemetry telemetry) {
         this.redisTemplate = redisTemplate;
+        this.telemetry = telemetry;
+    }
+
+    MatchingService(RedisTemplate<String, Object> redisTemplate) {
+        this(redisTemplate, MatchTelemetry.noOp());
     }
 
     public void joinQueue(String gameType, Long userId) {
@@ -61,15 +70,22 @@ public class MatchingService {
                 user
         );
         if (Long.valueOf(-1L).equals(added)) {
+            telemetry.queueEvent(gameType, "rejected");
             throw new IllegalStateException("User is already assigned to a match.");
         }
         if (Long.valueOf(1L).equals(added)) {
+            telemetry.queueEvent(gameType, "joined");
             log.info("User {} joined {} queue", userId, gameType);
+        } else {
+            telemetry.queueEvent(gameType, "duplicate");
         }
+        refreshQueueDepth(gameType);
     }
 
     public void cancelQueue(String gameType, Long userId) {
         redisTemplate.opsForZSet().remove(queueKey(gameType), userId.toString());
+        telemetry.queueEvent(gameType, "cancelled");
+        refreshQueueDepth(gameType);
     }
 
     @SuppressWarnings("unchecked")
@@ -81,8 +97,11 @@ public class MatchingService {
                 String.valueOf(RESERVATION_TTL.toSeconds())
         );
         if (pair == null || pair.size() < 4) {
+            refreshQueueDepth(gameType);
             return Optional.empty();
         }
+        telemetry.queueEvent(gameType, "matched");
+        refreshQueueDepth(gameType);
         return Optional.of(new MatchPair(
                 new QueuedPlayer(String.valueOf(pair.get(0)), Double.parseDouble(String.valueOf(pair.get(1)))),
                 new QueuedPlayer(String.valueOf(pair.get(2)), Double.parseDouble(String.valueOf(pair.get(3))))
@@ -98,6 +117,8 @@ public class MatchingService {
                 pair.p2().userId(),
                 String.valueOf(pair.p2().score())
         );
+        telemetry.queueEvent(gameType, "returned");
+        refreshQueueDepth(gameType);
     }
 
     public void createMatchRoom(String matchId, String gameType, String p1Id, String p2Id, String mapDataJson) {
@@ -123,6 +144,15 @@ public class MatchingService {
 
     private String queueKey(String gameType) {
         return "match_queue:" + gameType;
+    }
+
+    private void refreshQueueDepth(String gameType) {
+        try {
+            Long depth = redisTemplate.opsForZSet().size(queueKey(gameType));
+            telemetry.queueDepth(gameType, depth == null ? 0 : depth);
+        } catch (RuntimeException exception) {
+            log.warn("Could not refresh matchmaking queue depth for {}", gameType, exception);
+        }
     }
 
     public record QueuedPlayer(String userId, double score) {

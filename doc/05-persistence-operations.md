@@ -114,6 +114,7 @@ disconnect는 winner/reason과 0:0 기본 score로 같은 PvP 저장 경로를 �
 | Redis | `REDIS_HOST`, `REDIS_PORT` | `localhost:6379` |
 | frontend origin | `FRONTEND_URL` | `http://localhost:3000` |
 | engine | `ENGINE_IMAGE`, `ENGINE_WORKSPACE` | `code-battle-engine`, `temp` |
+| management | `MANAGEMENT_PORT`, `ENGINE_READINESS_TIMEOUT` | `8081`, `3s` |
 | JWT/cookie | `JWT_SECRET`, `JWT_EXPIRATION`, `COOKIE_SECURE`, `COOKIE_SAME_SITE` | 개발값, 7d, false, Lax |
 
 `.env.example`은 Compose와 운영 설정 이름을 함께 보여준다. Spring Boot는 루트 `.env`를 자동으로 읽지 않으므로 backend 값은 shell 또는 IDE에도 export해야 한다.
@@ -150,8 +151,7 @@ disconnect는 winner/reason과 0:0 기본 score로 같은 PvP 저장 경로를 �
 
 ## 현재 제약
 
-- DB 저장 실패 후 재시도/outbox가 없고 client 결과와 영속 상태가 달라질 수 있다. UUID 멱등성은 중복을 막지만 전달 보장은 하지 않는다.
+- DB 저장 실패 후 재시도/outbox가 없고 client 결과와 영속 상태가 달라질 수 있다. UUID 멱등성은 중복을 막지만 전달 보장은 하지 않으며, 현재는 저장 outcome과 duration metric으로 실패를 탐지한다.
 - 제출 코드, guest user, replay의 보존·삭제 정책이 없다.
-- 구조화 metric/readiness/correlation ID가 부족하다.
 
-DATA-01의 migration, map 저장, aggregate 제약, UUID 멱등성은 자동 테스트와 실제 MySQL smoke로 검증한다. 전달 보장과 보존 정책은 후속 마일스톤에서 다룬다.
+DATA-01의 migration, map 저장, aggregate 제약, UUID 멱등성은 자동 테스트와 실제 MySQL smoke로 검증한다. 관측 경계는 [관측성·장애 대응 설계](07-observability.md), 전달 보장과 보존 정책은 후속 마일스톤에서 다룬다.
