@@ -10,12 +10,12 @@
 | --- | --- | --- | --- |
 | 프론트 단위/컴포넌트 | `frontend/src/**/*.test.js` | 5 tests | 익명/세션 복원, token localStorage 부재, AI/draw/disconnect 결과 표시 정책 |
 | 프론트 브라우저 | `frontend/e2e` | 1 test | production build, 게스트 인증, 로비·난이도, 맵 생성, Python compile/run, 결과 overlay |
-| 백엔드 빠른 회귀 | `backend/code/src/test/java` | 62 pass | Flyway/H2 context, DTO·오류·보안 계약, JWT/cookie, Redis Lua 상태·매칭, workspace, 저장 aggregate, correlation context·metric·health |
+| 백엔드 빠른 회귀 | `backend/code/src/test/java` | 64 pass | Flyway/H2 context, DTO·오류·보안 계약, JWT/cookie, Redis Lua 상태·매칭, workspace, map init host 저장·오류 방어, 저장 aggregate, correlation context·metric·health |
 | 실제 인프라 통합 | `backend/code/src/test/java/.../integration` | 5 tests | MySQL migration·Redis, 인증/AI 전체 흐름, 두 사용자 PvP 동시 제출·disconnect, readiness·Prometheus·correlation header, DB/Redis 장애·복구 |
 | 엔진 규칙 | `engine/tests/test_land_grab.py`, `test_referee.py` | 4 tests | turn timeout, 마지막 점수, 맵 속성, C compiler 분기 |
-| Docker 계약 | `engine/tests/test_runners_integration.py` | 3 tests | 5개 언어 compile/run과 player 간·referee 접근 공격 차단 |
+| Docker 계약 | `engine/tests/test_runners_integration.py` | 4 tests | bind mount 쓰기 없는 init, 5개 언어 compile/run과 player 간·referee 접근 공격 차단 |
 
-엔진 전체 suite는 7개 test이며 Docker image가 없으면 계약 3개는 명시적으로 skip한다. 실제 인프라 백엔드 테스트 5개는 `cca.run.integration=true`일 때만 실행하며 MySQL·Redis·Toxiproxy는 Testcontainers가 격리된 임의 포트로 시작한다.
+엔진 전체 suite는 8개 test이며 Docker image가 없으면 계약 4개는 명시적으로 skip한다. 실제 인프라 백엔드 테스트 5개는 `cca.run.integration=true`일 때만 실행하며 MySQL·Redis·Toxiproxy는 Testcontainers가 격리된 임의 포트로 시작한다.
 
 ## 실행 명령
 
@@ -81,8 +81,8 @@ npm.cmd run test:e2e
 
 | workflow | 실행 조건 | 환경 | 범위 |
 | --- | --- | --- | --- |
-| `PR Gate` | pull request, main push | Ubuntu, Windows | backend 62건, frontend 5건·build, engine 규칙 4건 |
-| `Release Gate` | 수동 실행, `v*` tag push | Ubuntu | engine image·7건/5언어, Testcontainers 실제 통합 5건, package, Compose backend, Chromium E2E |
+| `PR Gate` | pull request, main push | Ubuntu, Windows | backend 64건, frontend 5건·build, engine 규칙 4건 |
+| `Release Gate` | 수동 실행, `v*` tag push | Ubuntu | engine image·8건/5언어, Testcontainers 실제 통합 5건, package, Compose backend, Chromium E2E |
 
 Release 실패 시 backend log, Surefire report, Playwright report·trace·screenshot·video를 artifact로 보존한다. 두 workflow는 repository read 권한만 사용하며 배포나 외부 시스템 변경은 수행하지 않는다.
 
@@ -93,7 +93,7 @@ integration test는 다음 조건을 만족할 때만 실행한다.
 1. `docker` executable이 PATH에 있다.
 2. `code-battle-engine` image inspect가 성공한다.
 
-Python, Java, C, C++, JavaScript의 backend runner template에 최소 strategy를 치환하고 실제 container에서 compile한다. run test는 각 언어가 player process로 참여해 50-turn 결과 JSON을 반환하는지 검증한다.
+init test는 runner 소유 bind mount에 쓰지 않고 유효한 map JSON을 stdout으로 반환하는지 확인한다. Python, Java, C, C++, JavaScript의 backend runner template에 최소 strategy를 치환하고 실제 container에서 compile한다. run test는 각 언어가 player process로 참여해 50-turn 결과 JSON을 반환하는지 검증한다.
 
 ## 변경별 필수 게이트
 

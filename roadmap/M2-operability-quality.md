@@ -34,23 +34,26 @@
   - Testcontainers singleton 환경에 MySQL 8.4, Redis 7.4, Toxiproxy를 구성하고 기존 실제 통합 4종을 임의 포트 환경으로 이전했다.
   - DB·Redis 연결 차단 시 readiness 503/DOWN과 복원 후 200/UP을 검증하는 장애 주입 테스트를 추가했다.
   - Playwright Chromium으로 production frontend의 게스트 로그인 → 로비 → 맵 생성 → Python compile/run → 결과 화면 경로를 추가했다.
-  - Ubuntu/Windows `PR Gate`와 Ubuntu `Release Gate` workflow를 추가했다. release는 실제 인프라 5종, 5언어 engine 7건, backend package, Chromium 흐름을 실행하고 실패 증거를 보존한다.
+  - Ubuntu/Windows `PR Gate`와 Ubuntu `Release Gate` workflow를 추가했다. release는 실제 인프라 5종, 5언어 engine 8건, backend package, Chromium 흐름을 실행하고 실패 증거를 보존한다.
 - 로컬 검증:
-  - backend 빠른 회귀 62건 통과. opt-in이 아니면 Testcontainers가 시작되지 않는다.
+  - backend 빠른 회귀 64건 통과. opt-in이 아니면 Testcontainers가 시작되지 않는다.
   - Compose가 중지된 상태에서 Testcontainers 실제 통합·장애 주입 5건 통과.
   - frontend 단위 5건, production build, 실제 backend와 Playwright Chromium 1건 통과.
-  - engine 규칙·5언어 compile/run·격리 공격 7건 통과.
+  - engine stdout-only init·규칙·5언어 compile/run·격리 공격 8건 통과.
   - workflow YAML parse와 `git diff --check` 통과.
 - 구현 커밋:
   - `93702ab` (`test(backend): isolate release infrastructure tests`)
   - `d12b063` (`test(frontend): add browser release flow`)
   - `1844c7e` (`ci: add cross-platform and release gates`)
-- 원격 상태(2026-08-17): `codex/m2-operability` push 완료. 아직 PR이 없고 workflow가 기본 branch에 반영되기 전이어서 원격 run은 생성되지 않았다.
+- 최초 원격 검증(2026-08-17):
+  - [PR #1](https://github.com/Urasica/code_clash_arena/pull/1)을 `main`에 병합했다.
+  - [Ubuntu PR Gate](https://github.com/Urasica/code_clash_arena/actions/runs/32024001696/job/95369422117)와 [Windows PR Gate](https://github.com/Urasica/code_clash_arena/actions/runs/32024001696/job/95369422136)는 성공했다.
+  - [Release Gate #32024436887](https://github.com/Urasica/code_clash_arena/actions/runs/32024436887)는 실제 인프라 단계에서 실패했다. Ubuntu bind mount에 대한 engine init 쓰기와 DB health socket 무제한 대기가 원인이었다.
+- 수정 검증: init을 stdout-only로 바꾸고 host 저장·필수 필드 검증을 추가했다. MySQL·Redis network timeout을 명시했으며 로컬 backend 64건, engine 8건, 실제 인프라 5건이 통과했다.
 - 남은 완료 조건:
-  1. `codex/m2-operability` PR을 만들고 GitHub-hosted Ubuntu/Windows `PR Gate`를 모두 성공시킨다.
-  2. PR을 `main`에 병합해 workflow를 기본 branch에 반영한다.
-  3. `Release Gate`를 수동 실행해 실제 인프라·Chromium·5언어 gate를 성공시킨다.
-  4. PR/check/run URL과 결과를 이 문서에 기록하고 `TEST-01`을 `DONE`으로 전환한다.
+  1. 수정 PR의 GitHub-hosted Ubuntu/Windows `PR Gate`를 모두 성공시킨다.
+  2. `Release Gate`를 수정 branch ref로 수동 실행해 실제 인프라·Chromium·5언어 gate를 성공시킨다.
+  3. 성공 run URL을 기록하고 수정 PR을 `main`에 병합한 뒤 `TEST-01`을 `DONE`으로 전환한다.
 - 현재 설계: [`../doc/06-testing-quality.md`](../doc/06-testing-quality.md)
 - 트러블슈팅: [`../docs/improvement/troubleshooting.md#ts-013-testcontainers-hikari-timeout-바인딩-실패`](../docs/improvement/troubleshooting.md#ts-013-testcontainers-hikari-timeout-바인딩-실패)
 
@@ -63,7 +66,7 @@
 
 ## 다음 작업
 
-`TEST-01`의 PR을 생성해 원격 gate를 최초 실행하고 위 순서대로 결과를 기록한다. 완료 전에는 `AUTH-01`의 구현·실제 credential smoke를 시작하지 않는다.
+`codex/m2-release-gate-fix` 수정 PR의 `PR Gate`와 branch ref `Release Gate`를 순서대로 성공시키고 결과를 기록한다. 완료 전에는 `AUTH-01`의 구현·실제 credential smoke를 시작하지 않는다.
 
 `DEP-01` 입력 기준으로 현재 MySQL 8.4 실행 시 Flyway 공식 지원 경고가 남고, `npm install` 기준 lockfile audit은 55건(낮음 11, 보통 15, 높음 27, 심각 2)을 보고한다. 자동 수정은 동작 변경 가능성이 있어 TEST-01에서 적용하지 않으며 지원 버전 정렬과 함께 별도 검증한다.
 
