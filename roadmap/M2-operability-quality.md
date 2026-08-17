@@ -8,7 +8,7 @@
 | ID | 상태 | 작업 | 완료 조건 |
 | --- | --- | --- | --- |
 | OPS-01 | DONE | 구조화 로그, correlation ID, queue/engine/DB metric, readiness·alert | match ID로 전 구간 추적하고 적체·timeout·cleanup·저장 실패 경보 확인 |
-| TEST-01 | IN_PROGRESS | Testcontainers, Playwright, failure injection, Windows/Linux CI | PR 빠른 gate와 release 실제 인프라·브라우저·5언어 gate |
+| TEST-01 | DONE | Testcontainers, Playwright, failure injection, Windows/Linux CI | PR 빠른 gate와 release 실제 인프라·브라우저·5언어 gate |
 | AUTH-01 | READY | 실제 Google OAuth claim·충돌·취소·logout 정책 | 운영 credential smoke와 예측 가능한 오류/계정 연결 |
 | DATA-02 | READY | 제출 코드·replay 보존, 삭제, 암호화, 감사 | 자동 만료·삭제와 접근 감사, DB 성장 상한 |
 | DEP-01 | READY | MySQL·Flyway·JDK·Node 지원 버전 정렬과 의존성 갱신 정책 | 지원 경고 없이 호환 행렬·lockfile·정기 갱신 gate 통과 |
@@ -27,7 +27,7 @@
 - 트러블슈팅: [`../docs/improvement/troubleshooting.md#ts-012-prometheus-endpoint가-노출-목록에서-누락`](../docs/improvement/troubleshooting.md#ts-012-prometheus-endpoint가-노출-목록에서-누락)
 - 완료 커밋: `a325f0a` (`feat(ops): add match observability baseline`)
 
-## TEST-01 진행 기록
+## TEST-01 완료 기록
 
 - 근거: 실제 인프라 테스트가 개발자의 고정 `localhost:3306/6379` 상태에 의존했고 DB·Redis 단절 시 readiness 복구를 자동 검증하지 않았다. 브라우저 사용자 경로와 Windows/Linux 차이를 막는 자동 gate도 없었다.
 - 구현:
@@ -45,15 +45,16 @@
   - `93702ab` (`test(backend): isolate release infrastructure tests`)
   - `d12b063` (`test(frontend): add browser release flow`)
   - `1844c7e` (`ci: add cross-platform and release gates`)
+  - `8a093f7` (`fix(engine): persist initialized maps on host`)
+  - `6562c7f` (`fix(ops): bound dependency health checks`)
 - 최초 원격 검증(2026-08-17):
   - [PR #1](https://github.com/Urasica/code_clash_arena/pull/1)을 `main`에 병합했다.
   - [Ubuntu PR Gate](https://github.com/Urasica/code_clash_arena/actions/runs/32024001696/job/95369422117)와 [Windows PR Gate](https://github.com/Urasica/code_clash_arena/actions/runs/32024001696/job/95369422136)는 성공했다.
   - [Release Gate #32024436887](https://github.com/Urasica/code_clash_arena/actions/runs/32024436887)는 실제 인프라 단계에서 실패했다. Ubuntu bind mount에 대한 engine init 쓰기와 DB health socket 무제한 대기가 원인이었다.
-- 수정 검증: init을 stdout-only로 바꾸고 host 저장·필수 필드 검증을 추가했다. MySQL·Redis network timeout을 명시했으며 로컬 backend 64건, engine 8건, 실제 인프라 5건이 통과했다.
-- 남은 완료 조건:
-  1. 수정 PR의 GitHub-hosted Ubuntu/Windows `PR Gate`를 모두 성공시킨다.
-  2. `Release Gate`를 수정 branch ref로 수동 실행해 실제 인프라·Chromium·5언어 gate를 성공시킨다.
-  3. 성공 run URL을 기록하고 수정 PR을 `main`에 병합한 뒤 `TEST-01`을 `DONE`으로 전환한다.
+- 수정 검증:
+  - init을 stdout-only로 바꾸고 host 저장·필수 필드 검증을 추가했다. MySQL·Redis network timeout을 명시했으며 로컬 backend 64건, engine 8건, 실제 인프라 5건이 통과했다.
+  - 수정 [PR #2](https://github.com/Urasica/code_clash_arena/pull/2)의 [Ubuntu PR Gate](https://github.com/Urasica/code_clash_arena/actions/runs/32026550525/job/95377043702)와 [Windows PR Gate](https://github.com/Urasica/code_clash_arena/actions/runs/32026550525/job/95377043672)가 성공했다.
+  - 병합 전 수정 branch ref로 실행한 [Release Gate #32026759619](https://github.com/Urasica/code_clash_arena/actions/runs/32026759619)가 실제 인프라·장애 복구, Chromium, 5개 언어를 포함한 전체 단계를 3분 14초에 통과했다.
 - 현재 설계: [`../doc/06-testing-quality.md`](../doc/06-testing-quality.md)
 - 트러블슈팅: [`../docs/improvement/troubleshooting.md#ts-013-testcontainers-hikari-timeout-바인딩-실패`](../docs/improvement/troubleshooting.md#ts-013-testcontainers-hikari-timeout-바인딩-실패)
 
@@ -66,7 +67,7 @@
 
 ## 다음 작업
 
-`codex/m2-release-gate-fix` 수정 PR의 `PR Gate`와 branch ref `Release Gate`를 순서대로 성공시키고 결과를 기록한다. 완료 전에는 `AUTH-01`의 구현·실제 credential smoke를 시작하지 않는다.
+`AUTH-01`을 시작한다. 실제 Google OAuth credential을 로컬 `.env`와 실행 환경에 주입하고 claim·계정 충돌·사용자 취소·logout 정책을 구현한 뒤 실제 redirect smoke를 수행한다.
 
 `DEP-01` 입력 기준으로 현재 MySQL 8.4 실행 시 Flyway 공식 지원 경고가 남고, `npm install` 기준 lockfile audit은 55건(낮음 11, 보통 15, 높음 27, 심각 2)을 보고한다. 자동 수정은 동작 변경 가능성이 있어 TEST-01에서 적용하지 않으며 지원 버전 정렬과 함께 별도 검증한다.
 

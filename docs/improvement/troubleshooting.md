@@ -153,20 +153,20 @@
 
 ## TS-016 Ubuntu Release Gate의 map init이 null 응답을 반환
 
-- 상태: 해결, 원격 재검증 대기
+- 상태: 해결
 - 현상: Ubuntu Release Gate에서 AI `/start`는 200을 반환했지만 `walls`가 null이었고, PvP는 `user_session`이 생성되지 않았다.
 - 재현 조건: `--cap-drop ALL`과 제한 capability를 적용한 엔진 init이 GitHub runner 소유 bind mount의 `/app/data/map.json`을 직접 생성한다.
 - 원인: container root 심판에 host runner 디렉터리 쓰기 권한이 없었다. 엔진은 예외를 exit code 0의 `{error}` JSON으로 바꿨고 백엔드는 필수 map 필드를 검증하지 않아 성공 응답처럼 처리했다.
 - 임시 조치: `DAC_OVERRIDE` capability 추가나 host 디렉터리의 world-writable 변경은 적용하지 않았다.
 - 근본 해결: init container는 bind mount 없이 map JSON만 stdout으로 반환한다. 백엔드가 오류와 `walls`·`coins`를 검증하고 host 권한으로 `map.json`을 저장한 뒤 lease를 만든다.
-- 검증 결과: map host 저장·오류 JSON 단위 테스트, bind mount 쓰기 없는 Docker init, 엔진 전체 8건, 실제 AI/PvP 포함 Testcontainers 5건이 로컬에서 통과했다.
+- 검증 결과: map host 저장·오류 JSON 단위 테스트, bind mount 쓰기 없는 Docker init, 엔진 전체 8건, 실제 AI/PvP 포함 Testcontainers 5건이 로컬에서 통과했다. 수정 branch의 [Release Gate #32026759619](https://github.com/Urasica/code_clash_arena/actions/runs/32026759619)에서도 실제 인프라와 Chromium 흐름을 포함한 전체 단계가 통과했다.
 
 ## TS-017 DB 단절 시 readiness가 socket 응답을 무기한 대기
 
-- 상태: 해결, 원격 재검증 대기
+- 상태: 해결
 - 현상: Ubuntu Release Gate의 DB 장애 주입에서 `DataSourceHealthIndicator`가 59.94초 동안 응답하지 않아 테스트 전체 60초 제한에 도달했다.
 - 재현 조건: Hikari가 이미 만든 MySQL 연결을 Toxiproxy로 차단한 뒤 readiness를 조회한다.
 - 원인: Hikari `connection-timeout`은 pool에서 연결을 얻는 시간만 제한한다. 기존 JDBC 연결의 network read에는 별도 socket timeout이 없어 health query가 계속 대기했다.
 - 임시 조치: JUnit 전체 timeout만 늘려 장애를 숨기지 않고 각 outage/recovery 단계의 15초 조건을 유지했다.
 - 근본 해결: Hikari pool 획득·검증과 MySQL driver connect/socket timeout을 분리해 설정하고 Redis connect/command timeout도 공통 설정으로 노출했다. 통합 테스트는 더 짧은 driver timeout을 명시한다.
-- 검증 결과: 실제 MySQL·Redis 연결 차단에서 readiness 503/DOWN과 복원 후 200/UP을 확인했으며 실제 인프라 5건이 로컬에서 통과했다.
+- 검증 결과: 실제 MySQL·Redis 연결 차단에서 readiness 503/DOWN과 복원 후 200/UP을 확인했으며 실제 인프라 5건이 로컬과 수정 branch의 [Release Gate #32026759619](https://github.com/Urasica/code_clash_arena/actions/runs/32026759619)에서 통과했다.
