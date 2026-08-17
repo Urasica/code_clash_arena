@@ -62,7 +62,9 @@ code_clash_arena/
 
 ### 1. 설정과 인프라
 
-개발 기본값은 그대로 실행할 수 있습니다. 값을 바꾸려면 루트의 `.env.example`을 `.env`로 복사하고 수정합니다. `.env`는 Compose가 읽으며, 백엔드 값은 같은 이름을 셸 또는 IDE 실행 설정에도 지정해야 합니다.
+개발 기본값은 그대로 실행할 수 있습니다. 값을 바꾸려면 루트의 `.env.example`을 `.env`로 복사하고 수정합니다. `.env`는 Git에서 제외되며 실제 Client ID, Client Secret, JWT secret은 이 파일 또는 외부 secret store에만 둡니다. `.envExample`은 다음 인증 작업에서 사용할 OAuth 항목만 모은 빠른 참조용이고, 전체 기준 템플릿은 `.env.example`입니다.
+
+Docker Compose는 루트 `.env`를 자동으로 읽지만 Spring Boot 단독 실행은 읽지 않습니다. Google 로그인을 검증할 때는 `.env`의 `SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_*` 값을 셸 환경이나 IDE 실행 설정으로 불러온 뒤 백엔드를 시작해야 합니다.
 
 ```powershell
 Copy-Item .env.example .env
@@ -145,6 +147,9 @@ npm.cmd run test:e2e
 | `ENGINE_READINESS_TIMEOUT` | `3s` | Docker와 engine image readiness 검사 제한 시간 |
 | `MANAGEMENT_PORT` | `8081` | health·Prometheus 내부 endpoint 포트 |
 | `REACT_APP_API_BASE_URL` | `http://localhost:8080` | 프론트 REST·SockJS 기준 주소 |
+| `SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_ID` | 없음 | Google OAuth Client ID. 실제 값은 `.env` 또는 secret store에만 저장 |
+| `SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_SECRET` | 없음 | Google OAuth Client Secret. 실제 값은 `.env` 또는 secret store에만 저장 |
+| `SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_SCOPE` | `profile,email` | Google OAuth 요청 scope |
 
 - 백엔드는 Docker CLI를 직접 호출합니다. Docker socket을 외부에 노출하거나 백엔드 컨테이너에 무제한으로 마운트하지 마세요.
 - Flyway가 vendor별 V1을 적용하고 Hibernate는 항상 `ddl-auto=validate`로 schema를 검사합니다. 운영 배포 전 DB backup과 migration 권한을 확인하고 적용된 migration 파일은 수정하지 마세요.

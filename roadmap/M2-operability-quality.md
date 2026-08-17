@@ -45,13 +45,25 @@
   - `93702ab` (`test(backend): isolate release infrastructure tests`)
   - `d12b063` (`test(frontend): add browser release flow`)
   - `1844c7e` (`ci: add cross-platform and release gates`)
-- 남은 완료 조건: 현재 branch를 push한 뒤 GitHub-hosted Ubuntu/Windows `PR Gate`와 수동 `Release Gate`를 각각 최초 1회 성공시킨다. 원격 실행 근거와 run URL을 기록한 뒤 `DONE`으로 전환한다.
+- 원격 상태(2026-08-17): `codex/m2-operability` push 완료. 아직 PR이 없고 workflow가 기본 branch에 반영되기 전이어서 원격 run은 생성되지 않았다.
+- 남은 완료 조건:
+  1. `codex/m2-operability` PR을 만들고 GitHub-hosted Ubuntu/Windows `PR Gate`를 모두 성공시킨다.
+  2. PR을 `main`에 병합해 workflow를 기본 branch에 반영한다.
+  3. `Release Gate`를 수동 실행해 실제 인프라·Chromium·5언어 gate를 성공시킨다.
+  4. PR/check/run URL과 결과를 이 문서에 기록하고 `TEST-01`을 `DONE`으로 전환한다.
 - 현재 설계: [`../doc/06-testing-quality.md`](../doc/06-testing-quality.md)
 - 트러블슈팅: [`../docs/improvement/troubleshooting.md#ts-013-testcontainers-hikari-timeout-바인딩-실패`](../docs/improvement/troubleshooting.md#ts-013-testcontainers-hikari-timeout-바인딩-실패)
 
+## AUTH-01 준비 기록
+
+- 실제 Client ID, Client Secret, JWT secret을 저장할 로컬 `.env`를 만들고 Git 추적에서 제외했다.
+- 전체 공개 템플릿은 루트 `.env.example`, OAuth 빠른 참조 템플릿은 `.envExample`로 제공한다. 두 템플릿에는 실제 credential을 기록하지 않는다.
+- Spring Boot 단독 실행은 루트 `.env`를 자동으로 읽지 않으므로 OAuth smoke 전에 값을 셸 환경 또는 IDE 실행 설정으로 불러와야 한다.
+- credential 발급, redirect URI 등록, claim·계정 충돌·취소·logout smoke는 `TEST-01` 완료 후 `AUTH-01`에서 수행한다.
+
 ## 다음 작업
 
-`TEST-01`의 원격 gate를 최초 실행하고 결과를 기록한다. 완료 전에는 `AUTH-01`을 시작하지 않는다.
+`TEST-01`의 PR을 생성해 원격 gate를 최초 실행하고 위 순서대로 결과를 기록한다. 완료 전에는 `AUTH-01`의 구현·실제 credential smoke를 시작하지 않는다.
 
 `DEP-01` 입력 기준으로 현재 MySQL 8.4 실행 시 Flyway 공식 지원 경고가 남고, `npm install` 기준 lockfile audit은 55건(낮음 11, 보통 15, 높음 27, 심각 2)을 보고한다. 자동 수정은 동작 변경 가능성이 있어 TEST-01에서 적용하지 않으며 지원 버전 정렬과 함께 별도 검증한다.
 
