@@ -30,7 +30,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 )
 @ActiveProfiles("integration")
 @EnabledIfSystemProperty(named = "cca.run.integration", matches = "true")
-class ObservabilityIntegrationTest {
+class ObservabilityIntegrationTest extends InfrastructureIntegrationTest {
 
     @LocalServerPort
     private int applicationPort;

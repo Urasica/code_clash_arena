@@ -18,7 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 })
 @ActiveProfiles("integration")
 @EnabledIfSystemProperty(named = "cca.run.integration", matches = "true")
-class RealInfrastructureSmokeTest {
+class RealInfrastructureSmokeTest extends InfrastructureIntegrationTest {
 
     @Autowired
     private Flyway flyway;

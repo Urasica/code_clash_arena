@@ -30,7 +30,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 })
 @ActiveProfiles("integration")
 @EnabledIfSystemProperty(named = "cca.run.integration", matches = "true")
-class FullStackPvpFlowTest {
+class FullStackPvpFlowTest extends InfrastructureIntegrationTest {
 
     private static final String GAME = "land_grab";
     private static final String CODE = """
@@ -80,7 +80,10 @@ class FullStackPvpFlowTest {
                 ))
         ).join();
 
-        await(() -> savedMatchCount(executedMatch) == 1, Duration.ofSeconds(45));
+        await(
+                () -> savedMatchCount(executedMatch) == 1 && matchKeysRemoved(executedMatch),
+                Duration.ofSeconds(45)
+        );
         assertStoredAggregate(executedMatch);
         assertMatchKeysRemoved(executedMatch);
 
@@ -100,7 +103,10 @@ class FullStackPvpFlowTest {
         assertThat(savedMatchCount(disconnectedMatch)).isZero();
 
         gameSessionService.handleSocketDisconnection(disconnectedMatch, p1Id.toString(), "p1-tab-b");
-        await(() -> savedMatchCount(disconnectedMatch) == 1, Duration.ofSeconds(5));
+        await(
+                () -> savedMatchCount(disconnectedMatch) == 1 && matchKeysRemoved(disconnectedMatch),
+                Duration.ofSeconds(5)
+        );
         assertStoredAggregate(disconnectedMatch);
         assertMatchKeysRemoved(disconnectedMatch);
     }
@@ -160,11 +166,15 @@ class FullStackPvpFlowTest {
     }
 
     private void assertMatchKeysRemoved(String matchId) {
-        assertThat(redisTemplate.hasKey("match_room:" + matchId)).isFalse();
-        assertThat(redisTemplate.hasKey("user_session:" + p1Id)).isFalse();
-        assertThat(redisTemplate.hasKey("user_session:" + p2Id)).isFalse();
-        assertThat(redisTemplate.hasKey("match_sockets:" + matchId + ":" + p1Id)).isFalse();
-        assertThat(redisTemplate.hasKey("match_sockets:" + matchId + ":" + p2Id)).isFalse();
+        assertThat(matchKeysRemoved(matchId)).isTrue();
+    }
+
+    private boolean matchKeysRemoved(String matchId) {
+        return !redisTemplate.hasKey("match_room:" + matchId)
+                && !redisTemplate.hasKey("user_session:" + p1Id)
+                && !redisTemplate.hasKey("user_session:" + p2Id)
+                && !redisTemplate.hasKey("match_sockets:" + matchId + ":" + p1Id)
+                && !redisTemplate.hasKey("match_sockets:" + matchId + ":" + p2Id);
     }
 
     private int savedMatchCount(String matchId) {

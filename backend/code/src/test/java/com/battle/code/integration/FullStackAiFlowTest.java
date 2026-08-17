@@ -37,7 +37,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 )
 @ActiveProfiles("integration")
 @EnabledIfSystemProperty(named = "cca.run.integration", matches = "true")
-class FullStackAiFlowTest {
+class FullStackAiFlowTest extends InfrastructureIntegrationTest {
 
     private static final String ORIGIN = "http://localhost:3000";
     private static final String USER_CODE = """
