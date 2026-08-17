@@ -58,6 +58,13 @@ class AuthServiceTest {
     }
 
     @Test
+    void signupRejectsInternalAccountPrefixes() {
+        assertThatThrownBy(() -> authService.signup("Google_123", "secret", "Player One"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Username prefix is reserved");
+    }
+
+    @Test
     void loginRejectsAnInvalidPassword() {
         User user = User.builder().username("player").password("encoded-secret").build();
         when(userRepository.findByUsername("player")).thenReturn(Optional.of(user));

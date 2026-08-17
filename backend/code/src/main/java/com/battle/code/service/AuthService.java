@@ -8,6 +8,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Locale;
 import java.util.UUID;
 
 @Service
@@ -20,6 +21,10 @@ public class AuthService {
     // 회원가입
     @Transactional
     public void signup(String username, String password, String nickname) {
+        String normalizedUsername = username.toLowerCase(Locale.ROOT);
+        if (normalizedUsername.startsWith("google_") || normalizedUsername.startsWith("guest_")) {
+            throw new IllegalArgumentException("Username prefix is reserved");
+        }
         if (userRepository.findByUsername(username).isPresent()) {
             throw new IllegalStateException("Username already exists");
         }

@@ -170,3 +170,33 @@
 - 임시 조치: JUnit 전체 timeout만 늘려 장애를 숨기지 않고 각 outage/recovery 단계의 15초 조건을 유지했다.
 - 근본 해결: Hikari pool 획득·검증과 MySQL driver connect/socket timeout을 분리해 설정하고 Redis connect/command timeout도 공통 설정으로 노출했다. 통합 테스트는 더 짧은 driver timeout을 명시한다.
 - 검증 결과: 실제 MySQL·Redis 연결 차단에서 readiness 503/DOWN과 복원 후 200/UP을 확인했으며 실제 인프라 5건이 로컬과 수정 branch의 [Release Gate #32026759619](https://github.com/Urasica/code_clash_arena/actions/runs/32026759619)에서 통과했다.
+
+## TS-018 Google OAuth 취소가 예측 가능한 화면으로 복귀하지 않음
+
+- 상태: 해결
+- 현상: 사용자가 Google 인증을 취소하거나 callback claim 검증이 실패했을 때 프론트에서 원인을 구분해 안내할 계약이 없었다.
+- 재현 조건: 실제 authorization 요청의 `state`를 유지한 채 callback에 `error=access_denied`를 반환하거나 필수 Google claim이 없는 사용자를 성공 handler에 전달한다.
+- 원인: 성공 handler만 있었고 OAuth2 실패를 공개 가능한 안정적 코드로 분류하는 handler와 프론트 소비 규칙이 없었다.
+- 임시 조치: Spring 기본 오류 화면을 운영 계약으로 간주하거나 예외 상세를 redirect query에 노출하지 않았다.
+- 근본 해결: 취소·claim 오류·미검증 email·계정 충돌·기타 실패를 다섯 공개 코드로 제한하고, 실패 시 임시 session을 무효화한 뒤 프론트로 redirect한다. 프론트는 안내를 표시하고 `authError` query를 history에서 즉시 제거한다.
+- 검증 결과: failure handler 단위 테스트와 프론트 취소 테스트가 통과했다. 실제 Google callback 취소에서도 `OAUTH_CANCELLED` 안내가 보이고 URL은 `http://localhost:3000/`으로 정리됐으며 로그에는 공개 코드와 예외 종류만 남았다.
+
+## TS-019 V2 migration 추가 후 실제 인프라 테스트가 버전 불일치로 실패
+
+- 상태: 해결
+- 현상: OAuth provider identity unique migration이 정상 적용됐지만 `RealInfrastructureSmokeTest`와 schema 검사가 예상 migration 버전 불일치로 실패했다.
+- 재현 조건: MySQL/H2에 V1 다음 V2를 적용한 뒤 최신 Flyway 버전을 숫자 `1`로 고정한 기존 assertion을 실행한다.
+- 원인: schema 계약 테스트가 migration의 의미 대신 당시 최신 버전 값을 상수로 가정했다.
+- 임시 조치: V2 migration을 제거하거나 테스트를 비활성화하지 않았다.
+- 근본 해결: 예상 최신 버전을 V2로 갱신하고 MySQL·H2 모두 `users(provider, provider_id)` unique 제약의 실제 존재까지 검증한다.
+- 검증 결과: backend 빠른 회귀 77건과 Testcontainers 실제 인프라·장애 주입 5건이 통과했으며 Flyway V1·V2 적용과 schema version 2를 확인했다.
+
+## TS-020 두 탭의 logout·OAuth 요청이 겹치면 재로그인이 일반 실패로 복귀
+
+- 상태: 운영 기준 추가
+- 현상: 최초 Google 로그인 성공 뒤 재로그인 smoke 중 `OAUTH_FAILED` 안내가 한 차례 나타났다.
+- 재현 조건: 같은 브라우저 session을 공유하는 사용자 탭과 자동 검증 탭에서 logout과 새 OAuth authorization/callback을 거의 동시에 진행한다.
+- 원인: 한 탭의 logout 또는 callback 정리가 다른 진행 중인 OAuth 요청의 임시 HTTP session/state를 무효화할 수 있다. 같은 시각에 logout 2건과 OAuth 실패 2건이 서로 다른 correlation ID로 기록돼 겹친 흐름임을 확인했다.
+- 임시 조치: 오류 query나 provider 예외 상세를 사용자에게 노출하지 않고 안정적인 `OAUTH_FAILED` 안내를 유지했다.
+- 근본 해결: logout·OAuth smoke를 한 탭에서 직렬 실행하고, 운영에서도 다른 탭의 로그인 시도가 겹친 경우 단일 탭에서 재시도하도록 안내한다. 보안을 위해 logout과 callback 뒤의 임시 session 무효화는 완화하지 않는다.
+- 검증 결과: 단일 흐름으로 같은 Google 계정에 재로그인하자 성공했고, DB의 Google 사용자 수와 내부 ID가 각각 1건과 17로 유지됐다.

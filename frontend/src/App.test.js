@@ -34,3 +34,13 @@ test('restores a valid login session', async () => {
   expect(localStorage.getItem('token')).toBeNull();
   expect(localStorage.getItem('userId')).toBeNull();
 });
+
+test('shows a stable OAuth cancellation message and removes the redirect code', async () => {
+  window.history.replaceState({}, '', '/?authError=OAUTH_CANCELLED&source=test');
+  getSession.mockRejectedValueOnce({ response: { status: 401 } });
+
+  render(<App />);
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('Google 로그인이 취소되었습니다.');
+  expect(window.location.search).toBe('?source=test');
+});

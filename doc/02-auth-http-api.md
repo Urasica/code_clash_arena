@@ -14,7 +14,10 @@
 | `JwtFilter` | `accessToken` cookie를 읽어 SecurityContext 설정 |
 | `AuthCookieService` | JWT cookie 발급·만료와 HttpOnly/Secure/SameSite 속성 |
 | `CustomUserDetailsService` | JWT subject인 user ID로 DB user를 로드하고 role 변환 |
-| `OAuth2SuccessHandler` | Google claim을 로컬 user로 연결/생성, JWT cookie, 프론트 redirect |
+| `GoogleOAuthClaims` | Google `sub`·email·`email_verified` claim 검증 |
+| `OAuthAccountService` | `(provider, providerId)` 기준 외부 계정 조회·생성 및 충돌 분류 |
+| `OAuth2SuccessHandler` | 검증된 Google 계정의 JWT cookie 발급, 임시 세션 정리, 프론트 redirect |
+| `OAuth2FailureHandler` | 사용자 취소·claim·계정 충돌·일반 실패를 안정적인 공개 코드로 변환 |
 | `SecurityConfig` | stateless filter chain, endpoint 권한, CORS, optional OAuth2 |
 | `SameOriginFilter` | 상태 변경 API의 Origin/Referer를 프론트 origin과 비교 |
 | `RateLimitFilter` | 로그인·게스트·컴파일·실행 요청을 사용자/IP 단위로 제한 |
@@ -55,8 +58,8 @@ JWT subject와 Spring `UserDetails.username`은 로그인 ID가 아니라 DB `Us
 | POST | `/api/auth/signup` | 불필요 | username, password, nickname | `Signup Success` |
 | POST | `/api/auth/login` | 불필요 | username, password | cookie + message/userId/nickname |
 | POST | `/api/auth/guest` | 불필요 | 없음 | cookie + userId/nickname |
-| GET | `/api/auth/me` | endpoint는 public, 내부 Principal 확인 | 없음 | userId/nickname/role/provider |
-| POST | `/api/auth/logout` | 불필요 | 없음 | cookie Max-Age 0 |
+| GET | `/api/auth/me` | 필요 | 없음 | userId/nickname/role/provider |
+| POST | `/api/auth/logout` | 불필요 | 없음 | cookie Max-Age 0, 존재하는 HTTP session 무효화 |
 | POST | `/api/match/land-grab/start` | 필요 | 없음 | matchId/walls/coins |
 | POST | `/api/match/land-grab/compile` | 필요 | matchId/userCode/language | status/error |
 | POST | `/api/match/land-grab/run` | 필요 | matchId/userCode/language/difficulty | engine result |
@@ -94,9 +97,29 @@ Land Grab controller는 실행 예외를 전역 handler에 위임한다. DB 결�
 
 ## Google OAuth2
 
-Spring `ClientRegistrationRepository`가 있을 때만 `oauth2Login`을 활성화한다. 성공 시 Google `sub`를 `google_{sub}` username으로 사용하고 email 앞부분을 nickname으로 저장한 뒤 프론트 URL로 redirect한다.
+Spring `ClientRegistrationRepository`가 있을 때만 `oauth2Login`을 활성화한다. 요청 scope는 `openid,profile,email`이며 Google callback에서 다음 정책을 적용한다.
+
+1. `registrationId`가 `google`인지 확인한다.
+2. 변경되지 않는 Google `sub`를 외부 계정 ID로 사용하고 email은 계정 식별자나 자동 연결 기준으로 사용하지 않는다.
+3. 비어 있거나 길이 제한을 넘긴 `sub`·email, 올바르지 않은 email 형식, `email_verified != true`를 거부한다.
+4. `(provider=GOOGLE, providerId=sub)`로 기존 사용자를 찾고 없을 때만 내부 계정을 만든다. DB V2 unique 제약이 동시 생성도 차단한다.
+5. 성공하면 HttpOnly JWT cookie를 발급하고 OAuth 과정의 임시 HTTP session을 무효화한 뒤 프론트 URL로 redirect한다. token은 redirect query에 넣지 않는다.
+
+로컬 가입 ID에는 내부 계정과 충돌할 수 있는 `google_`, `guest_` 접두사를 대소문자와 관계없이 허용하지 않는다. 동일 email의 로컬 계정이 있어도 Google 계정과 자동으로 합치지 않으며, 별도 명시적 연결 기능이 생기기 전까지 서로 독립된 계정으로 유지한다.
+
+취소·실패 redirect는 `authError` query에 아래 공개 코드만 전달한다. 프론트는 한국어 안내를 표시한 직후 이 query를 history에서 제거한다.
+
+| 코드 | 의미 |
+| --- | --- |
+| `OAUTH_CANCELLED` | 사용자가 Google 인증을 취소함 |
+| `OAUTH_CLAIMS_INVALID` | 필수 claim이 없거나 형식·길이가 잘못됨 |
+| `OAUTH_EMAIL_UNVERIFIED` | Google이 email 검증을 확인하지 않음 |
+| `OAUTH_ACCOUNT_CONFLICT` | provider identity 또는 내부 username 충돌 |
+| `OAUTH_FAILED` | 그 밖의 안전하게 공개할 수 없는 인증 실패 |
 
 Google 등록 정보는 Spring 표준 환경 변수 `SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_ID`, `..._CLIENT_SECRET`, `..._SCOPE`로 주입한다. 개발자는 실제 값을 Git에서 제외된 루트 `.env` 또는 외부 secret store에만 보관한다. 전체 공개 템플릿은 `.env.example`, OAuth 항목 빠른 참조는 `.envExample`이며 두 파일에는 실제 credential을 넣지 않는다. Docker Compose와 달리 Spring Boot 단독 실행은 루트 `.env`를 자동으로 읽지 않으므로 실행 셸 또는 IDE가 값을 주입해야 한다.
+
+logout은 애플리케이션 JWT cookie와 존재하는 임시 HTTP session만 제거한다. Google 전역 로그아웃이나 계정 권한 철회는 수행하지 않으며, callback 처리 뒤 provider access token을 애플리케이션 세션에 보관하지 않는다.
 
 ## 현재 보안 경계와 운영 기준
 
@@ -105,8 +128,8 @@ Google 등록 정보는 Spring 표준 환경 변수 `SPRING_SECURITY_OAUTH2_CLIE
 - 로그인 10회, guest 5회, compile 20회, run 10회를 기본 1분 window로 제한한다. 인증 요청은 user ID, 비인증 요청은 remote IP가 기준이며 Redis 장애 시 보호 endpoint는 `503 RATE_LIMIT_UNAVAILABLE`로 닫힌다.
 - `prod` profile은 32자 미만 또는 개발 기본 JWT secret, 비보안 cookie, 잘못된 SameSite, HTTP frontend URL을 거부한다.
 - 생성 후 24시간이 지난 guest 중 `match_player`가 참조하지 않는 계정만 주기적으로 삭제한다.
-- secret rotation은 배포 운영 절차에 속하며 자동화하지 않는다. 실제 Google OAuth claim 오류·계정 충돌 smoke는 별도 인증 마일스톤에서 다룬다.
+- secret rotation은 배포 운영 절차에 속하며 자동화하지 않는다. AUTH-01에서 claim·충돌·취소·logout 정책은 자동 테스트로 고정했고, 실제 Google redirect·동의·취소·최초 성공·logout·동일 계정 재로그인을 로컬 smoke로 검증했다. 재로그인 뒤에도 `provider=GOOGLE` 사용자 수와 내부 ID가 유지됐다.
 - Land Grab 성공 응답은 `StartMatchResponseDto`, `CompileResultDto`, `MatchExecutionResultDto`로 고정되어 있으며 engine의 snake_case 필드도 직렬화 테스트로 보호한다.
 - STOMP validation 실패는 `/user/queue/errors`로 `{type:"ERROR", code:"VALIDATION_ERROR", message}`를 반환한다.
 
-SEC-01의 동일-origin, rate limit, 운영 fail-fast, guest cleanup은 자동 테스트로 보호한다.
+SEC-01의 동일-origin, rate limit, 운영 fail-fast, guest cleanup과 AUTH-01의 Google claim·계정·실패·logout 계약은 자동 테스트로 보호한다.

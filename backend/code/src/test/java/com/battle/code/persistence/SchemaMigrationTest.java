@@ -20,8 +20,8 @@ class SchemaMigrationTest {
     private JdbcTemplate jdbcTemplate;
 
     @Test
-    void baselineMigrationCreatesTheCompleteSchema() {
-        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("1");
+    void migrationsCreateTheCompleteSchemaAndOAuthIdentityConstraint() {
+        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("2");
         Integer domainTableCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM information_schema.tables " +
                         "WHERE table_schema = 'public' " +
@@ -29,5 +29,15 @@ class SchemaMigrationTest {
                 Integer.class
         );
         assertThat(domainTableCount).isEqualTo(4);
+
+        Integer oauthIdentityConstraintCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.table_constraints " +
+                        "WHERE table_schema = 'public' " +
+                        "AND table_name = 'users' " +
+                        "AND constraint_name = 'uk_users_provider_identity' " +
+                        "AND constraint_type = 'UNIQUE'",
+                Integer.class
+        );
+        assertThat(oauthIdentityConstraintCount).isEqualTo(1);
     }
 }

@@ -2,6 +2,7 @@ package com.battle.code.config;
 
 import com.battle.code.security.JwtFilter;
 import com.battle.code.security.JwtTokenProvider;
+import com.battle.code.security.OAuth2FailureHandler;
 import com.battle.code.security.OAuth2SuccessHandler;
 import com.battle.code.observability.CorrelationIdFilter;
 import com.battle.code.security.AuthCookieProperties;
@@ -40,6 +41,7 @@ import java.util.List;
 public class SecurityConfig {
 
     private final OAuth2SuccessHandler oAuth2SuccessHandler;
+    private final OAuth2FailureHandler oAuth2FailureHandler;
     private final JwtTokenProvider jwtTokenProvider;
     private final ObjectProvider<ClientRegistrationRepository> clientRegistrationRepository;
     private final SameOriginFilter sameOriginFilter;
@@ -104,7 +106,9 @@ public class SecurityConfig {
                 );
 
         if (clientRegistrationRepository.getIfAvailable() != null) {
-            http.oauth2Login(oauth2 -> oauth2.successHandler(oAuth2SuccessHandler));
+            http.oauth2Login(oauth2 -> oauth2
+                    .successHandler(oAuth2SuccessHandler)
+                    .failureHandler(oAuth2FailureHandler));
         }
 
         return http.build();

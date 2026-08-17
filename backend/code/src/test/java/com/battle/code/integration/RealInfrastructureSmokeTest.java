@@ -31,7 +31,7 @@ class RealInfrastructureSmokeTest extends InfrastructureIntegrationTest {
 
     @Test
     void mysqlMigrationAndRedisAreReady() {
-        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("1");
+        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("2");
         Integer tableCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM information_schema.tables " +
                         "WHERE table_schema = DATABASE() " +
@@ -39,6 +39,16 @@ class RealInfrastructureSmokeTest extends InfrastructureIntegrationTest {
                 Integer.class
         );
         assertThat(tableCount).isEqualTo(4);
+
+        Integer oauthIdentityConstraintCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.table_constraints " +
+                        "WHERE table_schema = DATABASE() " +
+                        "AND table_name = 'users' " +
+                        "AND constraint_name = 'uk_users_provider_identity' " +
+                        "AND constraint_type = 'UNIQUE'",
+                Integer.class
+        );
+        assertThat(oauthIdentityConstraintCount).isEqualTo(1);
 
         try (var connection = redisConnectionFactory.getConnection()) {
             assertThat(connection.ping()).isEqualTo("PONG");

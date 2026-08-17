@@ -3,6 +3,7 @@ import Lobby from './Lobby';
 import GameArena from './GameArena';
 import LoginPage from './LoginPage';
 import { getSession, logout } from './features/auth/authApi';
+import { consumeOAuthError } from './features/auth/oauthErrors';
 
 function App() {
   const [view, setView] = useState('lobby'); // 'lobby', 'login', 'arena'
@@ -10,8 +11,15 @@ function App() {
   const [difficulty, setDifficulty] = useState('normal');
   const [userInfo, setUserInfo] = useState(null); // 유저 정보 저장 (닉네임 등)
   const [matchData, setMatchData] = useState(null); // PvP 매치 정보
+  const [oauthError, setOauthError] = useState(null);
 
   useEffect(() => {
+     const redirectError = consumeOAuthError();
+     if (redirectError) {
+         setOauthError(redirectError);
+         setView('login');
+     }
+
      const checkLoginStatus = async () => {
          try {
              const res = await getSession();
@@ -82,7 +90,9 @@ function App() {
       {view === 'login' && (
         <LoginPage 
             onLoginSuccess={handleLoginSuccess} 
-            onBack={() => setView('lobby')} 
+            onBack={() => setView('lobby')}
+            oauthError={oauthError}
+            onOAuthStart={() => setOauthError(null)}
         />
       )}
 
