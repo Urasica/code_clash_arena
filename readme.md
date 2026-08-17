@@ -37,6 +37,7 @@ code_clash_arena/
 │  ├─ security/, config/  HTTP·JWT·OAuth2·STOMP·Redis 설정
 │  └─ domain/, repository/, dto/
 ├─ engine/                다중 언어 runner와 Land Grab 규칙
+├─ .github/workflows/     Windows/Linux PR gate와 실제 release gate
 ├─ ops/prometheus/        초기 운영 경보 규칙
 ├─ doc/                   역할별 현재 코드 설계
 ├─ docs/                  완료된 분석·검증·개선 기록
@@ -55,7 +56,7 @@ code_clash_arena/
 ### 요구 사항
 
 - Java 17 이상
-- Node.js 18 이상과 npm
+- Node.js 20 이상과 npm
 - Python 3.10 이상
 - Docker Desktop 또는 호환 Docker daemon
 
@@ -112,15 +113,20 @@ Set-Location ../backend/code
 .\mvnw.cmd test
 .\mvnw.cmd -DskipTests package
 
-# 실제 MySQL·Redis·Docker release 회귀
-.\mvnw.cmd "-Dcca.run.integration=true" "-Dtest=RealInfrastructureSmokeTest,FullStackAiFlowTest,FullStackPvpFlowTest,ObservabilityIntegrationTest" test
+# Testcontainers MySQL·Redis·Toxiproxy와 Docker release 회귀
+.\mvnw.cmd "-Dcca.run.integration=true" "-Dtest=RealInfrastructureSmokeTest,ObservabilityIntegrationTest,DependencyFailureInjectionTest,FullStackAiFlowTest,FullStackPvpFlowTest" test
 
 # 엔진: code-battle-engine 이미지가 있으면 5개 언어 Docker 계약 테스트도 실행
 Set-Location ../..
 python -m unittest discover -s engine/tests -v
+
+# 실제 backend가 실행 중일 때 production frontend 브라우저 회귀
+Set-Location frontend
+npx.cmd playwright install chromium
+npm.cmd run test:e2e
 ```
 
-변경 전 기준은 [검증 기준선](docs/improvement/verification-baseline.md), 현재 M1 결과와 남은 제한은 [M1 완료 결과](docs/improvement/m1-results.md)에 기록합니다.
+실제 백엔드 통합 테스트의 MySQL·Redis·Toxiproxy는 Testcontainers가 자동 시작·정리하므로 Compose를 미리 시작하지 않아도 됩니다. Playwright는 로컬 backend, Compose MySQL·Redis, `code-battle-engine`이 실행 가능한 상태에서 사용합니다. 자동화 범위는 [테스트·품질 설계](doc/06-testing-quality.md)에 기록합니다.
 
 ## 환경 변수와 운영 주의사항
 

@@ -8,7 +8,7 @@
 | ID | 상태 | 작업 | 완료 조건 |
 | --- | --- | --- | --- |
 | OPS-01 | DONE | 구조화 로그, correlation ID, queue/engine/DB metric, readiness·alert | match ID로 전 구간 추적하고 적체·timeout·cleanup·저장 실패 경보 확인 |
-| TEST-01 | READY | Testcontainers, Playwright, failure injection, Windows/Linux CI | PR 빠른 gate와 release 실제 인프라·브라우저·5언어 gate |
+| TEST-01 | IN_PROGRESS | Testcontainers, Playwright, failure injection, Windows/Linux CI | PR 빠른 gate와 release 실제 인프라·브라우저·5언어 gate |
 | AUTH-01 | READY | 실제 Google OAuth claim·충돌·취소·logout 정책 | 운영 credential smoke와 예측 가능한 오류/계정 연결 |
 | DATA-02 | READY | 제출 코드·replay 보존, 삭제, 암호화, 감사 | 자동 만료·삭제와 접근 감사, DB 성장 상한 |
 | DEP-01 | READY | MySQL·Flyway·JDK·Node 지원 버전 정렬과 의존성 갱신 정책 | 지원 경고 없이 호환 행렬·lockfile·정기 갱신 gate 통과 |
@@ -27,8 +27,32 @@
 - 트러블슈팅: [`../docs/improvement/troubleshooting.md#ts-012-prometheus-endpoint가-노출-목록에서-누락`](../docs/improvement/troubleshooting.md#ts-012-prometheus-endpoint가-노출-목록에서-누락)
 - 완료 커밋: `a325f0a` (`feat(ops): add match observability baseline`)
 
+## TEST-01 진행 기록
+
+- 근거: 실제 인프라 테스트가 개발자의 고정 `localhost:3306/6379` 상태에 의존했고 DB·Redis 단절 시 readiness 복구를 자동 검증하지 않았다. 브라우저 사용자 경로와 Windows/Linux 차이를 막는 자동 gate도 없었다.
+- 구현:
+  - Testcontainers singleton 환경에 MySQL 8.4, Redis 7.4, Toxiproxy를 구성하고 기존 실제 통합 4종을 임의 포트 환경으로 이전했다.
+  - DB·Redis 연결 차단 시 readiness 503/DOWN과 복원 후 200/UP을 검증하는 장애 주입 테스트를 추가했다.
+  - Playwright Chromium으로 production frontend의 게스트 로그인 → 로비 → 맵 생성 → Python compile/run → 결과 화면 경로를 추가했다.
+  - Ubuntu/Windows `PR Gate`와 Ubuntu `Release Gate` workflow를 추가했다. release는 실제 인프라 5종, 5언어 engine 7건, backend package, Chromium 흐름을 실행하고 실패 증거를 보존한다.
+- 로컬 검증:
+  - backend 빠른 회귀 62건 통과. opt-in이 아니면 Testcontainers가 시작되지 않는다.
+  - Compose가 중지된 상태에서 Testcontainers 실제 통합·장애 주입 5건 통과.
+  - frontend 단위 5건, production build, 실제 backend와 Playwright Chromium 1건 통과.
+  - engine 규칙·5언어 compile/run·격리 공격 7건 통과.
+  - workflow YAML parse와 `git diff --check` 통과.
+- 구현 커밋:
+  - `93702ab` (`test(backend): isolate release infrastructure tests`)
+  - `d12b063` (`test(frontend): add browser release flow`)
+  - `1844c7e` (`ci: add cross-platform and release gates`)
+- 남은 완료 조건: 현재 branch를 push한 뒤 GitHub-hosted Ubuntu/Windows `PR Gate`와 수동 `Release Gate`를 각각 최초 1회 성공시킨다. 원격 실행 근거와 run URL을 기록한 뒤 `DONE`으로 전환한다.
+- 현재 설계: [`../doc/06-testing-quality.md`](../doc/06-testing-quality.md)
+- 트러블슈팅: [`../docs/improvement/troubleshooting.md#ts-013-testcontainers-hikari-timeout-바인딩-실패`](../docs/improvement/troubleshooting.md#ts-013-testcontainers-hikari-timeout-바인딩-실패)
+
 ## 다음 작업
 
-`TEST-01`을 시작한다. 빠른 PR gate와 실제 인프라·브라우저 release gate를 분리하고 Testcontainers, Playwright, failure injection, Windows/Linux CI를 단계적으로 추가한다.
+`TEST-01`의 원격 gate를 최초 실행하고 결과를 기록한다. 완료 전에는 `AUTH-01`을 시작하지 않는다.
+
+`DEP-01` 입력 기준으로 현재 MySQL 8.4 실행 시 Flyway 공식 지원 경고가 남고, `npm install` 기준 lockfile audit은 55건(낮음 11, 보통 15, 높음 27, 심각 2)을 보고한다. 자동 수정은 동작 변경 가능성이 있어 TEST-01에서 적용하지 않으며 지원 버전 정렬과 함께 별도 검증한다.
 
 M2 완료 시 장애를 재현하지 않고도 상태와 원인을 metric·log·trace에서 찾을 수 있어야 한다.

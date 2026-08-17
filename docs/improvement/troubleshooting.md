@@ -120,3 +120,33 @@
 - 임시 조치: endpoint 테스트를 제외하거나 metric을 애플리케이션 API로 대신 노출하지 않았다.
 - 근본 해결: `management.prometheus.metrics.export.enabled=true`를 공유 설정에 명시하고 health, info, prometheus만 management port에 노출했다.
 - 검증 결과: 실제 MySQL·Redis·Docker image 환경에서 readiness 200/UP, Prometheus text metric, HTTP correlation header 계약이 함께 통과했다.
+
+## TS-013 Testcontainers Hikari timeout 바인딩 실패
+
+- 상태: 해결
+- 현상: Testcontainers는 정상 시작하지만 Spring context가 `spring.datasource.hikari.connection-timeout`을 `long`으로 바인딩하지 못해 실제 통합 5건이 모두 시작 전에 실패했다.
+- 재현 조건: `DynamicPropertyRegistry`에서 Hikari timeout을 `"2s"`, `"1s"` 문자열로 등록한다.
+- 원인: Spring의 일반 `Duration` 설정과 달리 Hikari bean property는 millisecond `long`을 직접 요구한다.
+- 임시 조치: timeout 설정 제거로 장애 테스트를 장시간 대기시키지 않았다.
+- 근본 해결: dynamic property를 `2_000L`, `1_000L` millisecond 값으로 등록하고 Redis timeout만 duration 문자열을 유지했다.
+- 검증 결과: Compose가 중지된 상태에서 실제 통합 5건이 통과했고 DB·Redis 단절과 복구가 제한 시간 안에 감지됐다.
+
+## TS-014 Playwright 게스트 인증이 localhost 경계에서 거부
+
+- 상태: 해결
+- 현상: Playwright가 게스트 버튼을 눌러도 로그인 화면에 머물고 로그아웃 버튼이 나타나지 않았다.
+- 재현 조건: frontend를 `http://127.0.0.1:3000`에서 열고 기본 `FRONTEND_URL=http://localhost:3000` backend에 상태 변경 요청을 보낸다.
+- 원인: same-origin 검증은 host 문자열까지 정확히 비교하므로 `127.0.0.1` Origin은 `localhost` 허용값과 다르다.
+- 임시 조치: 보안 검증을 끄거나 click을 강제하지 않았다.
+- 근본 해결: Playwright 기본 URL을 실제 frontend 설정과 같은 `http://localhost:3000`으로 통일하고 배포별 값은 `PLAYWRIGHT_BASE_URL`로 명시하게 했다.
+- 검증 결과: guest cookie가 발급되고 session 복원 뒤 로비의 사용자 상태와 로그아웃 버튼이 표시됐다.
+
+## TS-015 개발 서버 오류 overlay가 브라우저 조작 차단
+
+- 상태: 해결
+- 현상: CRA 개발 서버의 runtime error iframe이 `GENERATE MAP` 버튼 위에서 pointer event를 가로채 Playwright가 timeout됐다. npm을 거친 web server child도 Windows에서 테스트 종료 뒤 남았다.
+- 재현 조건: Playwright `webServer`로 `react-scripts start`를 실행하고 Monaco 화면에 진입한다.
+- 원인: release 검증 대상이 아닌 개발 overlay가 화면 최상단을 덮었고 Windows child process tree 종료가 runner 수명과 분리됐다.
+- 임시 조치: overlay를 dismiss하거나 `force: true` click으로 우회하지 않았다.
+- 근본 해결: global setup이 production build를 생성하고 같은 Playwright runner process에서 최소 정적 서버를 시작하도록 했다. global setup이 반환한 teardown이 서버를 닫는다.
+- 검증 결과: Chromium 사용자 흐름 1건이 통과했고 Playwright가 summary 출력 후 exit code 0으로 정상 종료됐다.
