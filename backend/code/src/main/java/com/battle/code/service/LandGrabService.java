@@ -65,13 +65,22 @@ public class LandGrabService {
     private StartMatchResponseDto initializeMap(String matchId, Path matchDir) throws IOException, InterruptedException {
         Files.createDirectories(matchDir);
         String output = dockerExecutor.execute(
-                matchDir, GAME_TYPE, "init", true, false, INIT_TIMEOUT_SECONDS
+                matchDir, GAME_TYPE, "init", false, false, INIT_TIMEOUT_SECONDS
         );
 
         if (output.isBlank()) {
             throw new IOException("Docker init output is empty.");
         }
-        LandGrabMapDto mapData = objectMapper.readValue(output, LandGrabMapDto.class);
+        JsonNode payload = objectMapper.readTree(output);
+        if (payload.hasNonNull("error")) {
+            throw new IOException("Docker init failed: " + payload.get("error").asText());
+        }
+        LandGrabMapDto mapData = objectMapper.treeToValue(payload, LandGrabMapDto.class);
+        if (mapData.walls() == null || mapData.walls().isEmpty()
+                || mapData.coins() == null || mapData.coins().isEmpty()) {
+            throw new IOException("Docker init output is missing required map fields.");
+        }
+        objectMapper.writeValue(matchDir.resolve("map.json").toFile(), mapData);
         return new StartMatchResponseDto(matchId, mapData.walls(), mapData.coins());
     }
 

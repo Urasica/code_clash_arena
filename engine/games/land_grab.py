@@ -16,18 +16,20 @@ TURN_TIMEOUT_SECONDS = 0.5
 VALID_ACTIONS = {"MOVE_UP", "MOVE_DOWN", "MOVE_LEFT", "MOVE_RIGHT", "STAY"}
 
 # ==========================================
-# [Mode 1] INIT: 맵 생성 및 저장
+# [Mode 1] INIT: 맵 생성 및 선택적 저장
 # ==========================================
-def init(map_file):
-    # 1. 맵 데이터 생성
+def init(map_file=None):
+    # 맵 데이터 생성
     game_map = _generate_map_data()
-    
-    # 2. 파일로 저장
-    os.makedirs(os.path.dirname(map_file), exist_ok=True)
-    with open(map_file, "w") as f:
-        json.dump(game_map, f)
-    
-    # 3. 결과 출력 (백엔드 전달용)
+
+    # 직접 호출하는 도구는 파일 저장을 선택할 수 있다. 컨테이너 CLI는
+    # read-only 경계를 유지하고 stdout만 반환하며 호스트가 저장한다.
+    if map_file is not None:
+        os.makedirs(os.path.dirname(map_file), exist_ok=True)
+        with open(map_file, "w") as f:
+            json.dump(game_map, f)
+
+    # 결과 출력 (백엔드 전달용)
     print(json.dumps(game_map))
 
 # ==========================================

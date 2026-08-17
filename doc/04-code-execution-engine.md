@@ -71,13 +71,13 @@ AI run은 p1 사용자 코드와 p2 Python AI를 쓴다. PvP run은 두 runner�
 | engine compiler timeout | 10초 |
 | player turn timeout | 0.5초 |
 
-container는 `--rm`으로 실행한다. data와 players는 mode에 필요한 경우에만 같은 host match directory를 `/app/data`, `/app/players`에 mount한다. 이 mount는 root 심판만 읽는다. 심판은 각 소스를 `/run/players/p1|p2`로 복사한 뒤 디렉터리와 파일을 해당 전용 UID에 넘기고 mode 700/600으로 잠근다. compile과 player process는 비어 있는 환경과 전용 HOME으로 UID 전환한 뒤 시작한다. `/app` 전체는 root만 읽을 수 있다.
+container는 `--rm`으로 실행한다. data와 players는 run/compile mode에 필요한 경우에만 같은 host match directory를 `/app/data`, `/app/players`에 mount한다. init은 bind mount 없이 map JSON만 stdout으로 반환하고, 백엔드가 필수 필드를 검증한 뒤 host workspace의 `map.json`을 저장한다. run/compile mount는 root 심판만 읽는다. 심판은 각 소스를 `/run/players/p1|p2`로 복사한 뒤 디렉터리와 파일을 해당 전용 UID에 넘기고 mode 700/600으로 잠근다. compile과 player process는 비어 있는 환경과 전용 HOME으로 UID 전환한 뒤 시작한다. `/app` 전체는 root만 읽을 수 있다.
 
 ## mode 계약
 
 ### init
 
-`referee.py land_grab init` → `games.land_grab.init(map.json)` → map file과 stdout에 `{walls, coins}` JSON.
+`referee.py land_grab init` → `games.land_grab.init()` → stdout에 `{walls, coins}` JSON. `LandGrabService`가 `walls`·`coins`를 검증하고 host workspace에 `map.json`을 저장한다. 엔진 오류 JSON이나 필수 필드 누락은 lease 생성 전에 실패하며 작업공간을 정리한다.
 
 ### compile
 
