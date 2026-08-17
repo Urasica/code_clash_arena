@@ -1,0 +1,68 @@
+name: PR Gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fast-regression:
+    name: Fast regression (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Backend tests (Linux)
+        if: runner.os != 'Windows'
+        working-directory: backend/code
+        run: sh mvnw test -q
+
+      - name: Backend tests (Windows)
+        if: runner.os == 'Windows'
+        working-directory: backend/code
+        shell: pwsh
+        run: .\mvnw.cmd test -q
+
+      - name: Frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Frontend unit tests
+        working-directory: frontend
+        run: npm test -- --watchAll=false
+
+      - name: Frontend production build
+        working-directory: frontend
+        run: npm run build
+
+      - name: Engine unit tests
+        run: python -m unittest engine.tests.test_land_grab engine.tests.test_referee -v
