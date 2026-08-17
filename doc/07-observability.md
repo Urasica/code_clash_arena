@@ -55,7 +55,7 @@ management 서버는 애플리케이션 `8080`과 분리된 `MANAGEMENT_PORT`(�
 | `/actuator/health/readiness` | Spring readiness state, MySQL, Redis, `ENGINE_IMAGE` inspect 종합 |
 | `/actuator/prometheus` | Prometheus text format metric |
 
-readiness의 Docker image 검사는 기본 3초 안에 끝나야 하며 `ENGINE_READINESS_TIMEOUT`으로 조정한다. 응답은 component별 UP/DOWN까지 표시하고 command·connection 같은 세부 정보는 숨긴다. management port는 인증 정보를 제공하지 않으므로 인터넷에 노출하지 않고 내부망, sidecar 또는 로컬 scrape 경계에서만 허용한다.
+readiness의 Docker image 검사는 기본 3초 안에 끝나야 하며 `ENGINE_READINESS_TIMEOUT`으로 조정한다. MySQL은 pool 획득·검증과 driver connect/socket에 각각 상한을 두고 Redis도 connect/command timeout을 둬 단절된 기존 연결이 probe thread를 무기한 점유하지 않게 한다. 응답은 component별 UP/DOWN까지 표시하고 command·connection 같은 세부 정보는 숨긴다. management port는 인증 정보를 제공하지 않으므로 인터넷에 노출하지 않고 내부망, sidecar 또는 로컬 scrape 경계에서만 허용한다.
 
 ## 애플리케이션 metric
 

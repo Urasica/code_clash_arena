@@ -69,6 +69,8 @@ abstract class InfrastructureIntegrationTest {
         registry.add("spring.datasource.password", MYSQL::getPassword);
         registry.add("spring.datasource.hikari.connection-timeout", () -> 2_000L);
         registry.add("spring.datasource.hikari.validation-timeout", () -> 1_000L);
+        registry.add("spring.datasource.hikari.data-source-properties.connectTimeout", () -> 2_000);
+        registry.add("spring.datasource.hikari.data-source-properties.socketTimeout", () -> 2_000);
         registry.add("spring.data.redis.host", REDIS_PROXY::getContainerIpAddress);
         registry.add("spring.data.redis.port", REDIS_PROXY::getProxyPort);
         registry.add("spring.data.redis.connect-timeout", () -> "2s");

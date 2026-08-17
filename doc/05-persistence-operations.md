@@ -110,14 +110,18 @@ disconnect는 winner/reason과 0:0 기본 score로 같은 PvP 저장 경로를 �
 | 영역 | 환경 변수 | 로컬 기본값 |
 | --- | --- | --- |
 | MySQL | `DATABASE_URL`, `DATABASE_USERNAME`, `DATABASE_PASSWORD` | localhost `code_arena`, `cca/cca_dev` |
+| MySQL timeout | `DATABASE_CONNECTION_TIMEOUT_MS`, `DATABASE_VALIDATION_TIMEOUT_MS`, `DATABASE_CONNECT_TIMEOUT_MS`, `DATABASE_SOCKET_TIMEOUT_MS` | `5000`, `2000`, `5000`, `5000` ms |
 | JPA | 고정 설정 | `ddl-auto=validate` |
 | Redis | `REDIS_HOST`, `REDIS_PORT` | `localhost:6379` |
+| Redis timeout | `REDIS_CONNECT_TIMEOUT`, `REDIS_COMMAND_TIMEOUT` | `3s`, `3s` |
 | frontend origin | `FRONTEND_URL` | `http://localhost:3000` |
 | engine | `ENGINE_IMAGE`, `ENGINE_WORKSPACE` | `code-battle-engine`, `temp` |
 | management | `MANAGEMENT_PORT`, `ENGINE_READINESS_TIMEOUT` | `8081`, `3s` |
 | JWT/cookie | `JWT_SECRET`, `JWT_EXPIRATION`, `COOKIE_SECURE`, `COOKIE_SAME_SITE` | 개발값, 7d, false, Lax |
 
 `.env.example`은 Compose와 운영 설정 이름을 함께 보여준다. Spring Boot는 루트 `.env`를 자동으로 읽지 않으므로 backend 값은 shell 또는 IDE에도 export해야 한다.
+
+readiness에 포함되는 DB·Redis 검사가 네트워크 단절 상태에서 무기한 대기하지 않도록 pool 획득·검증과 driver connect/socket, Redis connect/command timeout을 각각 둔다. 운영 환경에서는 정상 쿼리와 네트워크의 p99보다 충분히 크면서 probe 허용 시간보다 작은 값으로 함께 조정한다.
 
 ## DB migration과 업그레이드
 

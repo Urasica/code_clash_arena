@@ -135,7 +135,9 @@ npm.cmd run test:e2e
 | 변수 | 기본값 | 설명 |
 | --- | --- | --- |
 | `DATABASE_URL`, `DATABASE_USERNAME`, `DATABASE_PASSWORD` | 로컬 `code_arena`/`cca` | MySQL 연결 |
+| `DATABASE_*_TIMEOUT_MS` | 연결 5초, 검증 2초, driver 연결·socket 5초 | DB 단절 시 pool 획득·검증·network 대기 상한 |
 | `REDIS_HOST`, `REDIS_PORT` | `localhost`, `6379` | 매칭·세션 Redis |
+| `REDIS_CONNECT_TIMEOUT`, `REDIS_COMMAND_TIMEOUT` | `3s` | Redis 연결·명령 대기 상한 |
 | `FRONTEND_URL` | `http://localhost:3000` | CORS, WebSocket 허용 origin, OAuth 성공 리다이렉트 |
 | `JWT_SECRET` | 로컬 개발 전용 값 | 운영에서는 32바이트 이상의 무작위 비밀로 반드시 교체 |
 | `JWT_EXPIRATION` | `7d` | JWT와 쿠키 수명 |

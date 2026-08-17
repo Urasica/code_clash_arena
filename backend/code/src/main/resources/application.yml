@@ -5,6 +5,12 @@ spring:
     url: ${DATABASE_URL:jdbc:mysql://localhost:3306/code_arena?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
     username: ${DATABASE_USERNAME:cca}
     password: ${DATABASE_PASSWORD:cca_dev}
+    hikari:
+      connection-timeout: ${DATABASE_CONNECTION_TIMEOUT_MS:5000}
+      validation-timeout: ${DATABASE_VALIDATION_TIMEOUT_MS:2000}
+      data-source-properties:
+        connectTimeout: ${DATABASE_CONNECT_TIMEOUT_MS:5000}
+        socketTimeout: ${DATABASE_SOCKET_TIMEOUT_MS:5000}
   jpa:
     hibernate:
       ddl-auto: validate
@@ -18,6 +24,8 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+      connect-timeout: ${REDIS_CONNECT_TIMEOUT:3s}
+      timeout: ${REDIS_COMMAND_TIMEOUT:3s}
 
 cca:
   frontend-url: ${FRONTEND_URL:http://localhost:3000}
