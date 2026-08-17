@@ -2,6 +2,8 @@ package com.battle.code.scheduler;
 
 import com.battle.code.dto.LandGrabMapDto;
 import com.battle.code.dto.MatchSuccessMessage;
+import com.battle.code.observability.MatchLogContext;
+import com.battle.code.observability.MatchTelemetry;
 import com.battle.code.service.LandGrabService;
 import com.battle.code.service.MatchingService;
 import com.battle.code.service.MatchingService.MatchPair;
@@ -26,6 +28,7 @@ public class MatchingScheduler {
     private final LandGrabService landGrabService;
     private final SimpMessagingTemplate messagingTemplate;
     private final ObjectMapper objectMapper;
+    private final MatchTelemetry telemetry;
 
     @Scheduled(fixedDelayString = "${cca.match.queue-poll-interval:1s}")
     public void checkMatchQueue() {
@@ -39,9 +42,10 @@ public class MatchingScheduler {
     }
 
     private void createMatch(String gameType, String matchId, MatchPair pair) {
-        try {
+        try (MatchLogContext.Scope ignored = MatchLogContext.open(matchId)) {
             LandGrabMapDto mapData = generateValidLandGrabMap();
             if (mapData == null) {
+                telemetry.matchCreation(gameType, "map_generation_failed");
                 matchingService.returnPair(gameType, pair);
                 return;
             }
@@ -57,8 +61,10 @@ public class MatchingScheduler {
                     "/topic/match/" + pair.p2().userId(),
                     new MatchSuccessMessage(matchId, pair.p1().userId(), pair.p2().userId(), mapData, "p2")
             );
+            telemetry.matchCreation(gameType, "success");
             log.info("Match found. game={}, matchId={}", gameType, matchId);
         } catch (Exception exception) {
+            telemetry.matchCreation(gameType, "failure");
             log.error("Match creation failed for {}", matchId, exception);
             matchingService.returnPair(gameType, pair);
         }

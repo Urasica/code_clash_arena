@@ -1,8 +1,12 @@
+# Local secrets and machine-specific runtime settings
+.env
+.env.local
+backend/code/.env
+frontend/.env
+
 backend/code/src/main/resources/application.properties
 backend/code/src/main/resources/application-secret.properties
 backend/code/logs
-.env
-frontend/.env
 backend/code/temp/
 __pycache__/
 *.pyc

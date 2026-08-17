@@ -9,6 +9,7 @@
 - Monaco Editor와 턴별 리플레이
 - HttpOnly JWT 쿠키 기반 로컬·게스트·선택적 Google 로그인
 - CPU·메모리·PID·네트워크·실행 시간·출력 크기를 제한한 코드 실행
+- correlation/match ID가 포함된 JSON 로그와 readiness·Prometheus metric
 
 ## 구성
 
@@ -32,9 +33,12 @@ code_clash_arena/
 │  ├─ controller/         REST·STOMP 진입점
 │  ├─ service/            인증·매칭·게임 오케스트레이션
 │  ├─ execution/          Docker 실행과 임시 작업공간 관리
+│  ├─ observability/      correlation context, metric, engine readiness
 │  ├─ security/, config/  HTTP·JWT·OAuth2·STOMP·Redis 설정
 │  └─ domain/, repository/, dto/
 ├─ engine/                다중 언어 runner와 Land Grab 규칙
+├─ .github/workflows/     Windows/Linux PR gate와 실제 release gate
+├─ ops/prometheus/        초기 운영 경보 규칙
 ├─ doc/                   역할별 현재 코드 설계
 ├─ docs/                  완료된 분석·검증·개선 기록
 ├─ roadmap/               미완료 작업과 완료 조건
@@ -52,13 +56,15 @@ code_clash_arena/
 ### 요구 사항
 
 - Java 17 이상
-- Node.js 18 이상과 npm
+- Node.js 20 이상과 npm
 - Python 3.10 이상
 - Docker Desktop 또는 호환 Docker daemon
 
 ### 1. 설정과 인프라
 
-개발 기본값은 그대로 실행할 수 있습니다. 값을 바꾸려면 루트의 `.env.example`을 `.env`로 복사하고 수정합니다. `.env`는 Compose가 읽으며, 백엔드 값은 같은 이름을 셸 또는 IDE 실행 설정에도 지정해야 합니다.
+개발 기본값은 그대로 실행할 수 있습니다. 값을 바꾸려면 루트의 `.env.example`을 `.env`로 복사하고 수정합니다. `.env`는 Git에서 제외되며 실제 Client ID, Client Secret, JWT secret은 이 파일 또는 외부 secret store에만 둡니다. `.envExample`은 다음 인증 작업에서 사용할 OAuth 항목만 모은 빠른 참조용이고, 전체 기준 템플릿은 `.env.example`입니다.
+
+Docker Compose는 루트 `.env`를 자동으로 읽지만 Spring Boot 단독 실행은 읽지 않습니다. Google 로그인을 검증할 때는 `.env`의 `SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_*` 값을 셸 환경이나 IDE 실행 설정으로 불러온 뒤 백엔드를 시작해야 합니다.
 
 ```powershell
 Copy-Item .env.example .env
@@ -81,7 +87,7 @@ Set-Location backend/code
 .\mvnw.cmd spring-boot:run
 ```
 
-macOS/Linux에서는 `./mvnw spring-boot:run`을 사용합니다. 기본 주소는 `http://localhost:8080`입니다.
+macOS/Linux에서는 `./mvnw spring-boot:run`을 사용합니다. API 기본 주소는 `http://localhost:8080`, 내부 management 주소는 `http://localhost:8081`입니다.
 
 ### 4. 프론트엔드
 
@@ -109,15 +115,20 @@ Set-Location ../backend/code
 .\mvnw.cmd test
 .\mvnw.cmd -DskipTests package
 
-# 실제 MySQL·Redis·Docker release 회귀
-.\mvnw.cmd "-Dcca.run.integration=true" "-Dtest=RealInfrastructureSmokeTest,FullStackAiFlowTest,FullStackPvpFlowTest" test
+# Testcontainers MySQL·Redis·Toxiproxy와 Docker release 회귀
+.\mvnw.cmd "-Dcca.run.integration=true" "-Dtest=RealInfrastructureSmokeTest,ObservabilityIntegrationTest,DependencyFailureInjectionTest,FullStackAiFlowTest,FullStackPvpFlowTest" test
 
 # 엔진: code-battle-engine 이미지가 있으면 5개 언어 Docker 계약 테스트도 실행
 Set-Location ../..
 python -m unittest discover -s engine/tests -v
+
+# 실제 backend가 실행 중일 때 production frontend 브라우저 회귀
+Set-Location frontend
+npx.cmd playwright install chromium
+npm.cmd run test:e2e
 ```
 
-변경 전 기준은 [검증 기준선](docs/improvement/verification-baseline.md), 현재 M1 결과와 남은 제한은 [M1 완료 결과](docs/improvement/m1-results.md)에 기록합니다.
+실제 백엔드 통합 테스트의 MySQL·Redis·Toxiproxy는 Testcontainers가 자동 시작·정리하므로 Compose를 미리 시작하지 않아도 됩니다. Playwright는 로컬 backend, Compose MySQL·Redis, `code-battle-engine`이 실행 가능한 상태에서 사용합니다. 자동화 범위는 [테스트·품질 설계](doc/06-testing-quality.md)에 기록합니다.
 
 ## 환경 변수와 운영 주의사항
 
@@ -133,7 +144,12 @@ python -m unittest discover -s engine/tests -v
 | `RATE_LIMIT_*` | endpoint별 개발 기본값 | login/guest/compile/run Redis 고정 window 제한 |
 | `ENGINE_IMAGE` | `code-battle-engine` | 실행 엔진 이미지 |
 | `ENGINE_WORKSPACE` | `temp` | 매치별 임시 작업공간 루트 |
+| `ENGINE_READINESS_TIMEOUT` | `3s` | Docker와 engine image readiness 검사 제한 시간 |
+| `MANAGEMENT_PORT` | `8081` | health·Prometheus 내부 endpoint 포트 |
 | `REACT_APP_API_BASE_URL` | `http://localhost:8080` | 프론트 REST·SockJS 기준 주소 |
+| `SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_ID` | 없음 | Google OAuth Client ID. 실제 값은 `.env` 또는 secret store에만 저장 |
+| `SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_SECRET` | 없음 | Google OAuth Client Secret. 실제 값은 `.env` 또는 secret store에만 저장 |
+| `SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_SCOPE` | `profile,email` | Google OAuth 요청 scope |
 
 - 백엔드는 Docker CLI를 직접 호출합니다. Docker socket을 외부에 노출하거나 백엔드 컨테이너에 무제한으로 마운트하지 마세요.
 - Flyway가 vendor별 V1을 적용하고 Hibernate는 항상 `ddl-auto=validate`로 schema를 검사합니다. 운영 배포 전 DB backup과 migration 권한을 확인하고 적용된 migration 파일은 수정하지 마세요.
@@ -141,3 +157,4 @@ python -m unittest discover -s engine/tests -v
 - 엔진 컨테이너는 네트워크 없음, 0.5 CPU, 512 MiB, PID 128, 읽기 전용 rootfs로 실행됩니다. 정책 변경 시 실행기 테스트와 운영 문서를 함께 갱신하세요.
 - Redis 매치 데이터는 30분, WebSocket 세션은 2시간 TTL을 사용합니다. 예상 최대 대전 시간과 장애 복구 정책에 맞춰 함께 조정해야 합니다.
 - `.env`, OAuth 비밀, 실제 JWT 비밀과 사용자 제출 코드는 커밋하지 마세요.
+- `MANAGEMENT_PORT`는 인증 없이 상태와 metric을 제공하므로 외부에 공개하지 말고 내부 scrape 경계에서만 접근하세요. 기본 경보 규칙은 `ops/prometheus/alerts.yml`에 있습니다.

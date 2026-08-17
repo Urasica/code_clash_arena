@@ -1,0 +1,12 @@
+# Compatibility example for local OAuth setup.
+# The complete canonical template is .env.example.
+# Copy the values you need into the ignored .env file; never place real secrets here.
+
+FRONTEND_URL=http://localhost:3000
+JWT_SECRET=replace-with-a-random-secret-at-least-32-bytes
+COOKIE_SECURE=false
+COOKIE_SAME_SITE=Lax
+
+SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_ID=
+SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_SECRET=
+SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_SCOPE=profile,email

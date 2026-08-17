@@ -1,7 +1,8 @@
 # Code Clash Arena 마일스톤 로드맵
 
-- 기준일: 2026-08-04
-- 기준 브랜치: `codex/stage-2-improvements`
+- 기준일: 2026-08-17
+- 기준 브랜치: `main`
+- 현재 작업 브랜치: `codex/m2-operability`
 - 관리 단위: 우선순위 목록이 아니라 완료 조건을 공유하는 마일스톤
 
 현재 코드 설명은 [`../doc`](../doc/README.md), 완료 기록은 [`../docs`](../docs/README.md)에 둔다. 이 폴더에는 아직 끝나지 않은 목표와 진행 커밋만 둔다.
@@ -9,7 +10,7 @@
 | 마일스톤 | 목표 | 상태 | 문서 |
 | --- | --- | --- | --- |
 | M1 | 실제 인프라에서 안전하고 일관된 매치 경계 | DONE | [M1-release-boundary.md](M1-release-boundary.md) |
-| M2 | 관측 가능하고 자동 회귀에 강한 운영 | READY | [M2-operability-quality.md](M2-operability-quality.md) |
+| M2 | 관측 가능하고 자동 회귀에 강한 운영 | IN_PROGRESS | [M2-operability-quality.md](M2-operability-quality.md) |
 | M3 | 기능 단위 유지보수 구조 | READY | [M3-maintainability.md](M3-maintainability.md) |
 | M4 | 플랫폼 현대화와 용량 최적화 | READY | [M4-modernization-scale.md](M4-modernization-scale.md) |
 

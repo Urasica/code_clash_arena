@@ -3,6 +3,8 @@ package com.battle.code.service;
 import com.battle.code.dto.GameErrorMessage;
 import com.battle.code.dto.GameNotificationMessage;
 import com.battle.code.dto.MatchExecutionResultDto;
+import com.battle.code.observability.MatchLogContext;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -20,6 +22,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 @Service
+@Slf4j
 public class GameSessionService {
 
     private static final Duration SESSION_TTL = Duration.ofMinutes(30);
@@ -87,8 +90,11 @@ public class GameSessionService {
         }
 
         try {
-            matchExecutor.execute(() -> runPvPMatch(matchId));
+            try (MatchLogContext.Scope ignored = MatchLogContext.open(matchId)) {
+                matchExecutor.execute(() -> runPvPMatch(matchId));
+            }
         } catch (RejectedExecutionException exception) {
+            log.warn("PvP match execution queue rejected matchId={}", matchId, exception);
             stateService.transition(matchId, MatchStatus.FAILED, MatchStatus.RUNNING);
             messagingTemplate.convertAndSend(gameTopic(matchId), GameErrorMessage.executionFailed());
             cleanupMatch(matchId);
@@ -97,7 +103,7 @@ public class GameSessionService {
 
     private void runPvPMatch(String matchId) {
         String roomKey = roomKey(matchId);
-        try {
+        try (MatchLogContext.Scope ignored = MatchLogContext.open(matchId)) {
             String p1Code = requiredValue(roomKey, "p1_code");
             String p2Code = requiredValue(roomKey, "p2_code");
             String p1Lang = requiredValue(roomKey, "p1_lang");
@@ -121,6 +127,7 @@ public class GameSessionService {
             }
             messagingTemplate.convertAndSend(gameTopic(matchId), result);
         } catch (Exception exception) {
+            log.error("PvP match execution failed. matchId={}", matchId, exception);
             stateService.transition(
                     matchId,
                     MatchStatus.FAILED,
@@ -163,10 +170,12 @@ public class GameSessionService {
     }
 
     void confirmLastSocketDisconnected(String matchId, String userId) {
-        if (positive(redisTemplate.opsForSet().size(socketsKey(matchId, userId)))) {
-            return;
+        try (MatchLogContext.Scope ignored = MatchLogContext.open(matchId)) {
+            if (positive(redisTemplate.opsForSet().size(socketsKey(matchId, userId)))) {
+                return;
+            }
+            handleDisconnection(matchId, userId);
         }
-        handleDisconnection(matchId, userId);
     }
 
     public void handleDisconnection(String matchId, String disconnectedUserId) {

@@ -269,10 +269,11 @@ const Lobby = ({ onStartGame, isLoggedIn, onRequestLogin, userInfo, onLogout }) 
               </p>
               
               <div style={{ marginTop: '20px', background: 'rgba(0,0,0,0.3)', padding: '20px', borderRadius: '4px' }}>
-                <label style={{ display: 'block', marginBottom: '8px', fontSize: '12px', color: 'var(--primary)' }}>
+                <label htmlFor="ai-difficulty" style={{ display: 'block', marginBottom: '8px', fontSize: '12px', color: 'var(--primary)' }}>
                   난이도 선택
                 </label>
                 <select 
+                  id="ai-difficulty"
                   className="cyber-input" 
                   style={{ marginBottom: '15px', width: '100%' }}
                   value={difficulty}

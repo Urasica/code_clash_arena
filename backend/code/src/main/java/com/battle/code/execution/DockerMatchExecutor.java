@@ -1,6 +1,9 @@
 package com.battle.code.execution;
 
+import com.battle.code.observability.MatchLogContext;
+import com.battle.code.observability.MatchTelemetry;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -9,6 +12,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -22,9 +26,19 @@ public class DockerMatchExecutor {
     private static final int MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
 
     private final String engineImage;
+    private final MatchTelemetry telemetry;
 
-    public DockerMatchExecutor(@Value("${cca.engine.image:code-battle-engine}") String engineImage) {
+    @Autowired
+    public DockerMatchExecutor(
+            @Value("${cca.engine.image:code-battle-engine}") String engineImage,
+            MatchTelemetry telemetry
+    ) {
         this.engineImage = engineImage;
+        this.telemetry = telemetry;
+    }
+
+    public DockerMatchExecutor(String engineImage) {
+        this(engineImage, MatchTelemetry.noOp());
     }
 
     public String execute(
@@ -35,28 +49,46 @@ public class DockerMatchExecutor {
             boolean mountPlayers,
             int timeoutSeconds
     ) throws IOException, InterruptedException {
-        Process process = createProcess(matchDir, gameType, mode, mountData, mountPlayers).start();
-        CompletableFuture<StreamCapture> stdoutFuture = captureAsync(process.getInputStream());
-        CompletableFuture<StreamCapture> stderrFuture = captureAsync(process.getErrorStream());
+        long startedAt = System.nanoTime();
+        String outcome = "failure";
+        try (MatchLogContext.Scope ignored = MatchLogContext.open(matchDir.getFileName().toString())) {
+            Process process = createProcess(matchDir, gameType, mode, mountData, mountPlayers).start();
+            CompletableFuture<StreamCapture> stdoutFuture = captureAsync(process.getInputStream());
+            CompletableFuture<StreamCapture> stderrFuture = captureAsync(process.getErrorStream());
 
-        boolean finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
-        if (!finished) {
-            process.destroyForcibly();
-            process.waitFor(2, TimeUnit.SECONDS);
-            throw new IOException("Docker execution timed out after " + timeoutSeconds + " seconds.");
-        }
+            boolean finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
+            if (!finished) {
+                process.destroyForcibly();
+                process.waitFor(2, TimeUnit.SECONDS);
+                outcome = "timeout";
+                throw new IOException("Docker execution timed out after " + timeoutSeconds + " seconds.");
+            }
 
-        StreamCapture stdout = awaitCapture(stdoutFuture);
-        StreamCapture stderr = awaitCapture(stderrFuture);
-        if (stdout.truncated() || stderr.truncated()) {
-            throw new IOException("Docker output exceeded " + MAX_OUTPUT_BYTES + " bytes.");
-        }
+            StreamCapture stdout = awaitCapture(stdoutFuture);
+            StreamCapture stderr = awaitCapture(stderrFuture);
+            if (stdout.truncated() || stderr.truncated()) {
+                outcome = "output_limit";
+                throw new IOException("Docker output exceeded " + MAX_OUTPUT_BYTES + " bytes.");
+            }
 
-        if (process.exitValue() != 0) {
-            log.error("Docker execution failed (exit code {}). stderr: {}", process.exitValue(), stderr.text());
-            throw new IOException("Docker execution failed: " + stderr.text());
+            if (process.exitValue() != 0) {
+                outcome = "non_zero_exit";
+                log.error("Docker execution failed (exit code {}). stderr: {}", process.exitValue(), stderr.text());
+                throw new IOException("Docker execution failed: " + stderr.text());
+            }
+            outcome = "success";
+            return stdout.text().trim();
+        } catch (InterruptedException exception) {
+            outcome = "interrupted";
+            throw exception;
+        } finally {
+            telemetry.engineExecution(
+                    gameType,
+                    mode,
+                    outcome,
+                    Duration.ofNanos(Math.max(0, System.nanoTime() - startedAt))
+            );
         }
-        return stdout.text().trim();
     }
 
     ProcessBuilder createProcess(

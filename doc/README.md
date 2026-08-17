@@ -1,7 +1,7 @@
 # 현재 코드 설계 문서
 
-- 기준일: 2026-08-04
-- 기준 브랜치: `codex/stage-2-improvements`
+- 기준일: 2026-08-17
+- 기준 브랜치: `codex/m2-operability`
 - 성격: 목표 구조가 아니라 현재 코드가 실제로 수행하는 책임과 경계를 설명한다.
 
 ## 시스템 개요
@@ -38,6 +38,7 @@ flowchart LR
 | 코드 실행·게임 엔진 | [04-code-execution-engine.md](04-code-execution-engine.md) | runner 합성, 작업공간, Docker 격리, Land Grab 규칙 |
 | 영속화·운영 | [05-persistence-operations.md](05-persistence-operations.md) | MySQL 모델, 결과/replay 저장, 설정, 로컬 인프라 |
 | 테스트·품질 | [06-testing-quality.md](06-testing-quality.md) | 테스트 계층, 실행 명령, 보장 범위와 공백 |
+| 관측성·장애 대응 | [07-observability.md](07-observability.md) | correlation ID, JSON 로그, metric, readiness, alert |
 
 ## 역할 간 의존 방향
 

@@ -2,6 +2,7 @@ package com.battle.code.controller;
 
 import com.battle.code.dto.GameJoinRequestDto;
 import com.battle.code.dto.GameSubmissionRequestDto;
+import com.battle.code.observability.MatchLogContext;
 import com.battle.code.service.GameSessionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -29,9 +30,11 @@ public class GameSocketController {
     ) {
         String sessionId = accessor.getSessionId();
 
-        if (sessionId != null) {
-            log.info("User {} joined Match {} (Session: {})", principal.getName(), request.matchId(), sessionId);
-            gameSessionService.registerGameSession(request.matchId(), sessionId, principal.getName());
+        try (MatchLogContext.Scope ignored = MatchLogContext.open(request.matchId())) {
+            if (sessionId != null) {
+                log.info("User {} joined Match {} (Session: {})", principal.getName(), request.matchId(), sessionId);
+                gameSessionService.registerGameSession(request.matchId(), sessionId, principal.getName());
+            }
         }
     }
 
@@ -43,12 +46,14 @@ public class GameSocketController {
     public void submitCode(@Valid @Payload GameSubmissionRequestDto request, Principal principal) {
         Long userId = Long.parseLong(principal.getName());
 
-        log.info("[PvP] Code Submitted - Match: {}, User: {}", request.matchId(), userId);
-        gameSessionService.handleCodeSubmission(
-                request.matchId(),
-                userId,
-                request.code(),
-                request.language()
-        );
+        try (MatchLogContext.Scope ignored = MatchLogContext.open(request.matchId())) {
+            log.info("[PvP] Code Submitted - Match: {}, User: {}", request.matchId(), userId);
+            gameSessionService.handleCodeSubmission(
+                    request.matchId(),
+                    userId,
+                    request.code(),
+                    request.language()
+            );
+        }
     }
 }

@@ -18,8 +18,11 @@
   },
   "scripts": {
     "start": "react-scripts start",
+    "start:e2e": "node e2e/serve-build.js",
     "build": "react-scripts build",
     "test": "react-scripts test",
+    "test:e2e": "playwright test",
+    "test:e2e:report": "playwright show-report",
     "eject": "react-scripts eject"
   },
   "eslintConfig": {
@@ -39,5 +42,8 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1"
   }
 }

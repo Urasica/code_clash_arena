@@ -96,6 +96,8 @@ Land Grab controller는 실행 예외를 전역 handler에 위임한다. DB 결�
 
 Spring `ClientRegistrationRepository`가 있을 때만 `oauth2Login`을 활성화한다. 성공 시 Google `sub`를 `google_{sub}` username으로 사용하고 email 앞부분을 nickname으로 저장한 뒤 프론트 URL로 redirect한다.
 
+Google 등록 정보는 Spring 표준 환경 변수 `SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_ID`, `..._CLIENT_SECRET`, `..._SCOPE`로 주입한다. 개발자는 실제 값을 Git에서 제외된 루트 `.env` 또는 외부 secret store에만 보관한다. 전체 공개 템플릿은 `.env.example`, OAuth 항목 빠른 참조는 `.envExample`이며 두 파일에는 실제 credential을 넣지 않는다. Docker Compose와 달리 Spring Boot 단독 실행은 루트 `.env`를 자동으로 읽지 않으므로 실행 셸 또는 IDE가 값을 주입해야 한다.
+
 ## 현재 보안 경계와 운영 기준
 
 - unsafe method(`POST`, `PUT`, `PATCH`, `DELETE`)의 `/api/**` 요청은 `Origin` 또는 `Referer`가 `cca.frontend-url`과 같아야 한다. 브라우저 밖의 운영 도구도 허용된 `Origin` header를 보내야 한다.

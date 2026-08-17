@@ -4,6 +4,7 @@ import com.battle.code.dto.CompileResultDto;
 import com.battle.code.dto.MatchExecutionResultDto;
 import com.battle.code.dto.RunRequestDto;
 import com.battle.code.dto.StartMatchResponseDto;
+import com.battle.code.observability.MatchLogContext;
 import com.battle.code.service.LandGrabService;
 import com.battle.code.service.MatchRunOutcome;
 import com.battle.code.service.MatchService;
@@ -39,6 +40,15 @@ public class LandGrabMatchController {
     @PostMapping("/run")
     public ResponseEntity<MatchExecutionResultDto> runMatch(
             @Valid @RequestBody RunRequestDto request,
+            Principal principal
+    ) throws IOException, InterruptedException {
+        try (MatchLogContext.Scope ignored = MatchLogContext.open(request.getMatchId())) {
+            return runObserved(request, principal);
+        }
+    }
+
+    private ResponseEntity<MatchExecutionResultDto> runObserved(
+            RunRequestDto request,
             Principal principal
     ) throws IOException, InterruptedException {
         long userId = userId(principal);
@@ -87,6 +97,15 @@ public class LandGrabMatchController {
     @PostMapping("/compile")
     public ResponseEntity<CompileResultDto> compileMatch(
             @Valid @RequestBody RunRequestDto request,
+            Principal principal
+    ) throws IOException, InterruptedException {
+        try (MatchLogContext.Scope ignored = MatchLogContext.open(request.getMatchId())) {
+            return compileObserved(request, principal);
+        }
+    }
+
+    private ResponseEntity<CompileResultDto> compileObserved(
+            RunRequestDto request,
             Principal principal
     ) throws IOException, InterruptedException {
 

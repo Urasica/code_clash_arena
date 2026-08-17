@@ -3,6 +3,7 @@ package com.battle.code.service;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.data.redis.core.script.RedisScript;
 
 import java.util.List;
@@ -16,12 +17,16 @@ import static org.mockito.Mockito.when;
 class MatchingServiceTest {
 
     private RedisTemplate<String, Object> redisTemplate;
+    private ZSetOperations<String, Object> zSetOperations;
     private MatchingService service;
 
     @BeforeEach
     @SuppressWarnings("unchecked")
     void setUp() {
         redisTemplate = mock(RedisTemplate.class);
+        zSetOperations = mock(ZSetOperations.class);
+        when(redisTemplate.opsForZSet()).thenReturn(zSetOperations);
+        when(zSetOperations.size("match_queue:land_grab")).thenReturn(0L);
         service = new MatchingService(redisTemplate);
     }
 

@@ -1,0 +1,53 @@
+groups:
+  - name: code-clash-arena-operability
+    rules:
+      - alert: CcaBackendUnavailable
+        expr: up{job="code-clash-arena"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Code Clash Arena backend metrics target is unavailable
+          runbook: Check the readiness endpoint, MySQL, Redis, and Docker engine image in that order.
+
+      - alert: CcaMatchQueueBacklog
+        expr: max by (game) (cca_match_queue_depth) > 50
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Matchmaking queue backlog is above the operating threshold
+          runbook: Compare queue depth with match creation failures and engine executor queue depth.
+
+      - alert: CcaEngineExecutionTimeout
+        expr: increase(cca_engine_executions_total{outcome="timeout"}[5m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: A sandbox engine execution timed out
+          runbook: Find the correlationId and matchId in JSON logs, then inspect Docker capacity and submitted-code behavior.
+
+      - alert: CcaMatchExecutorBacklog
+        expr: cca_match_executor_queued > 10
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Match executions are waiting for workers
+          runbook: Compare active workers, engine duration, timeout count, CPU, and memory pressure.
+
+      - alert: CcaMatchPersistenceFailure
+        expr: increase(cca_match_persistence_total{outcome="failure"}[5m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: A match result could not be persisted
+          runbook: Use matchId to compare the engine result log with MySQL availability and constraint errors.
+
+      - alert: CcaWorkspaceCleanupFailure
+        expr: increase(cca_workspace_cleanup_total{outcome="failure"}[15m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: A match workspace cleanup operation failed
+          runbook: Inspect workspace permissions and disk usage before removing only the affected match directory.

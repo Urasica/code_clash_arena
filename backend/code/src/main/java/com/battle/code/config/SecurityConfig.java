@@ -3,6 +3,7 @@ package com.battle.code.config;
 import com.battle.code.security.JwtFilter;
 import com.battle.code.security.JwtTokenProvider;
 import com.battle.code.security.OAuth2SuccessHandler;
+import com.battle.code.observability.CorrelationIdFilter;
 import com.battle.code.security.AuthCookieProperties;
 import com.battle.code.security.JwtProperties;
 import com.battle.code.security.RateLimitFilter;
@@ -116,6 +117,7 @@ public class SecurityConfig {
         config.setAllowedOrigins(List.of(frontendUrl));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
+        config.setExposedHeaders(List.of(CorrelationIdFilter.HEADER));
         config.setAllowCredentials(true); // 쿠키 허용
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);
