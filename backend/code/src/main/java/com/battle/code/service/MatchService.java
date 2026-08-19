@@ -4,6 +4,7 @@ import com.battle.code.domain.GameMatch;
 import com.battle.code.domain.MatchPlayer;
 import com.battle.code.domain.MatchReplay;
 import com.battle.code.domain.User;
+import com.battle.code.data.SensitiveDataService;
 import com.battle.code.dto.MatchExecutionResultDto;
 import com.battle.code.observability.MatchTelemetry;
 import com.battle.code.repository.GameMatchRepository;
@@ -25,22 +26,21 @@ public class MatchService {
     private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
     private final MatchTelemetry telemetry;
+    private final SensitiveDataService sensitiveDataService;
 
     @Autowired
     public MatchService(
             GameMatchRepository matchRepository,
             UserRepository userRepository,
             ObjectMapper objectMapper,
-            MatchTelemetry telemetry
+            MatchTelemetry telemetry,
+            SensitiveDataService sensitiveDataService
     ) {
         this.matchRepository = matchRepository;
         this.userRepository = userRepository;
         this.objectMapper = objectMapper;
         this.telemetry = telemetry;
-    }
-
-    MatchService(GameMatchRepository matchRepository, UserRepository userRepository, ObjectMapper objectMapper) {
-        this(matchRepository, userRepository, objectMapper, MatchTelemetry.noOp());
+        this.sensitiveDataService = sensitiveDataService;
     }
 
     public void savePvPMatchResult(String matchId, Long p1Id, Long p2Id, MatchExecutionResultDto result,
@@ -58,9 +58,9 @@ public class MatchService {
                 .orElseThrow(() -> new IllegalArgumentException("Player 2 not found: " + p2Id));
         GameMatch match = newMatch(matchId, "PVP", result, mapDataJson);
         Map<String, Integer> scores = result.finalScores();
-        match.addPlayer(player(p1User, "p1", outcome("p1", result.winner(), result.p1Error()),
+        match.addPlayer(player(matchId, p1User, "p1", outcome("p1", result.winner(), result.p1Error()),
                 score(scores, "p1"), p1Lang, p1Code));
-        match.addPlayer(player(p2User, "p2", outcome("p2", result.winner(), result.p2Error()),
+        match.addPlayer(player(matchId, p2User, "p2", outcome("p2", result.winner(), result.p2Error()),
                 score(scores, "p2"), p2Lang, p2Code));
         if (persistOnce(match)) {
             log.info("PvP match saved. matchId={}, winner={}", matchId, result.winner());
@@ -80,9 +80,9 @@ public class MatchService {
                 .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
         GameMatch match = newMatch(matchId, "AI", result, mapDataJson);
         Map<String, Integer> scores = result.finalScores();
-        match.addPlayer(player(user, "p1", outcome("p1", result.winner(), result.p1Error()),
+        match.addPlayer(player(matchId, user, "p1", outcome("p1", result.winner(), result.p1Error()),
                 score(scores, "p1"), language, userCode));
-        match.addPlayer(player(null, "p2", outcome("p2", result.winner(), result.p2Error()),
+        match.addPlayer(player(matchId, null, "p2", outcome("p2", result.winner(), result.p2Error()),
                 score(scores, "p2"), "python", "AI-" + difficulty.toUpperCase()));
         if (persistOnce(match)) {
             log.info("AI match saved. matchId={}, winner={}", matchId, result.winner());
@@ -102,7 +102,10 @@ public class MatchService {
         if (result.logs() != null) {
             try {
                 match.setReplay(MatchReplay.builder()
-                        .fullLog(objectMapper.writeValueAsString(result.logs()))
+                        .fullLog(sensitiveDataService.protectReplay(
+                                matchId,
+                                objectMapper.writeValueAsString(result.logs())
+                        ))
                         .build());
             } catch (Exception exception) {
                 log.warn("Could not serialize replay for match {}", matchId, exception);
@@ -111,14 +114,24 @@ public class MatchService {
         return match;
     }
 
-    private MatchPlayer player(User user, String index, String result, int score, String language, String code) {
+    private MatchPlayer player(
+            String matchUuid,
+            User user,
+            String index,
+            String result,
+            int score,
+            String language,
+            String code
+    ) {
         return MatchPlayer.builder()
                 .user(user)
                 .playerIndex(index)
                 .result(result)
                 .score(score)
                 .language(language == null || language.isBlank() ? "unknown" : language)
-                .submittedCode(code == null ? "" : code)
+                .submittedCode(sensitiveDataService.protectSubmittedCode(
+                        matchUuid, index, code
+                ))
                 .build();
     }
 

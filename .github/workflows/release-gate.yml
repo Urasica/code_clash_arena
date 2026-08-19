@@ -60,7 +60,7 @@ jobs:
         run: >-
           sh mvnw
           -Dcca.run.integration=true
-          -Dtest=RealInfrastructureSmokeTest,ObservabilityIntegrationTest,DependencyFailureInjectionTest,FullStackAiFlowTest,FullStackPvpFlowTest
+          -Dtest=RealInfrastructureSmokeTest,ObservabilityIntegrationTest,DependencyFailureInjectionTest,FullStackAiFlowTest,FullStackPvpFlowTest,SensitiveDataIntegrationTest
           test -q
 
       - name: Package backend

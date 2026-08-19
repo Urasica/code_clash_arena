@@ -31,14 +31,15 @@ class RealInfrastructureSmokeTest extends InfrastructureIntegrationTest {
 
     @Test
     void mysqlMigrationAndRedisAreReady() {
-        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("2");
+        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("3");
         Integer tableCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM information_schema.tables " +
                         "WHERE table_schema = DATABASE() " +
-                        "AND table_name IN ('users', 'game_match', 'match_player', 'match_replay')",
+                        "AND table_name IN (" +
+                        "'users', 'game_match', 'match_player', 'match_replay', 'sensitive_data_audit')",
                 Integer.class
         );
-        assertThat(tableCount).isEqualTo(4);
+        assertThat(tableCount).isEqualTo(5);
 
         Integer oauthIdentityConstraintCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM information_schema.table_constraints " +
@@ -49,6 +50,16 @@ class RealInfrastructureSmokeTest extends InfrastructureIntegrationTest {
                 Integer.class
         );
         assertThat(oauthIdentityConstraintCount).isEqualTo(1);
+
+        Integer auditIndexCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(DISTINCT index_name) FROM information_schema.statistics " +
+                        "WHERE table_schema = DATABASE() " +
+                        "AND table_name = 'sensitive_data_audit' " +
+                        "AND index_name IN ('idx_sensitive_audit_occurred_at', " +
+                        "'idx_sensitive_audit_match_uuid')",
+                Integer.class
+        );
+        assertThat(auditIndexCount).isEqualTo(2);
 
         try (var connection = redisConnectionFactory.getConnection()) {
             assertThat(connection.ping()).isEqualTo("PONG");

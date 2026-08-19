@@ -53,6 +53,22 @@ cca:
     cookie:
       secure: ${COOKIE_SECURE:false}
       same-site: ${COOKIE_SAME_SITE:Lax}
+  data:
+    cleanup-enabled: ${DATA_CLEANUP_ENABLED:true}
+    legacy-migration-enabled: ${DATA_LEGACY_MIGRATION_ENABLED:true}
+    submitted-code-retention: ${DATA_SUBMITTED_CODE_RETENTION:7d}
+    replay-retention: ${DATA_REPLAY_RETENTION:30d}
+    audit-retention: ${DATA_AUDIT_RETENTION:365d}
+    cleanup-initial-delay: ${DATA_CLEANUP_INITIAL_DELAY:1m}
+    cleanup-interval: ${DATA_CLEANUP_INTERVAL:10m}
+    max-retained-matches: ${DATA_MAX_RETAINED_MATCHES:1000}
+    max-audit-records: ${DATA_MAX_AUDIT_RECORDS:100000}
+    cleanup-batch-size: ${DATA_CLEANUP_BATCH_SIZE:500}
+    submitted-code-max-bytes: ${DATA_SUBMITTED_CODE_MAX_BYTES:262144}
+    replay-max-bytes: ${DATA_REPLAY_MAX_BYTES:1048576}
+    encryption-active-key-id: ${DATA_ENCRYPTION_ACTIVE_KEY_ID:local-v1}
+    encryption-active-key: ${DATA_ENCRYPTION_KEY:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}
+    encryption-previous-keys: ${DATA_ENCRYPTION_PREVIOUS_KEYS:}
   security:
     require-origin: ${SECURITY_REQUIRE_ORIGIN:true}
     rate-limit:

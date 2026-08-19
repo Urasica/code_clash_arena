@@ -1,5 +1,6 @@
 package com.battle.code.security;
 
+import com.battle.code.data.SensitiveDataProperties;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
@@ -17,15 +18,18 @@ public class ProductionSecurityValidator implements InitializingBean {
 
     private final JwtProperties jwtProperties;
     private final AuthCookieProperties cookieProperties;
+    private final SensitiveDataProperties sensitiveDataProperties;
     private final String frontendUrl;
 
     public ProductionSecurityValidator(
             JwtProperties jwtProperties,
             AuthCookieProperties cookieProperties,
+            SensitiveDataProperties sensitiveDataProperties,
             @Value("${cca.frontend-url}") String frontendUrl
     ) {
         this.jwtProperties = jwtProperties;
         this.cookieProperties = cookieProperties;
+        this.sensitiveDataProperties = sensitiveDataProperties;
         this.frontendUrl = frontendUrl;
     }
 
@@ -43,6 +47,13 @@ public class ProductionSecurityValidator implements InitializingBean {
         }
         if (!"https".equalsIgnoreCase(URI.create(frontendUrl).getScheme())) {
             throw new IllegalStateException("Production frontend URL must use HTTPS.");
+        }
+        if (SensitiveDataProperties.LOCAL_DEVELOPMENT_KEY.equals(
+                sensitiveDataProperties.getEncryptionActiveKey()
+        )) {
+            throw new IllegalStateException(
+                    "Production sensitive data encryption key must not use the development default."
+            );
         }
     }
 }

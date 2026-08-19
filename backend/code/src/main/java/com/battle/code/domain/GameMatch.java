@@ -41,7 +41,7 @@ public class GameMatch {
     @OneToMany(mappedBy = "gameMatch", cascade = CascadeType.ALL)
     private List<MatchPlayer> players = new ArrayList<>();
 
-    @OneToOne(mappedBy = "gameMatch", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @OneToOne(mappedBy = "gameMatch", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
     private MatchReplay replay;
 
     @PrePersist
@@ -55,6 +55,15 @@ public class GameMatch {
 
     public void setReplay(MatchReplay replay) {
         this.replay = replay;
-        replay.setGameMatch(this);
+        if (replay != null) {
+            replay.setGameMatch(this);
+        }
+    }
+
+    public void removeReplay() {
+        if (replay != null) {
+            replay.setGameMatch(null);
+            replay = null;
+        }
     }
 }
