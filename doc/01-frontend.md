@@ -8,13 +8,14 @@
 
 | 위치 | 현재 책임 |
 | --- | --- |
-| `src/App.js` | `lobby/login/arena` 화면 전환, `/me` 세션 복원, logout, 선택 난이도와 PvP matchData 전달 |
-| `src/LoginPage.js` | 로컬 login/signup, guest, Google OAuth 시작 UI |
+| `src/App.js` | `lobby/login/arena` 화면 전환, `/me` 세션 복원, OAuth 실패 소비, logout, 선택 난이도와 PvP matchData 전달 |
+| `src/LoginPage.js` | 로컬 login/signup, guest, Google OAuth 시작과 실패 안내 UI |
 | `src/Lobby.js` | 게임/난이도 선택, PvP queue socket 연결, join/cancel, 개인 match topic 구독 |
 | `src/GameArena.js` | AI/PvP 모드 결정, 10분 타이머, Monaco 코드, compile/run/submit, 게임 결과 UI |
 | `src/ReplayViewer.js` | engine logs의 turn 이동·자동 재생과 Canvas 렌더링 |
 | `src/CodeTemplates.js` | 5개 언어 사용자 전략 시작 템플릿 |
 | `src/features/auth/authApi.js` | 인증 REST 함수와 Google 로그인 URL |
+| `src/features/auth/oauthErrors.js` | OAuth 공개 오류 코드를 사용자 문구로 변환하고 URL query에서 일회성 소비 |
 | `src/features/landGrab/landGrabApi.js` | Land Grab start/compile/run REST 함수 |
 | `src/features/landGrab/matchOutcome.js` | playerRole과 engine 결과를 VICTORY/DRAW/DEFEAT 표시값으로 변환 |
 | `src/shared/api/httpClient.js` | Axios base URL, `withCredentials=true` |
@@ -35,7 +36,7 @@ stateDiagram-v2
     Arena --> Lobby: exit/retry 종료
 ```
 
-브라우저 시작 시 `getSession()`을 호출한다. 성공하면 `isLoggedIn=true`와 `userInfo`를 설정하고, 401 등 실패면 익명 로비를 유지한다. 토큰이나 userId는 localStorage에 저장하지 않는다.
+브라우저 시작 시 OAuth redirect의 `authError`를 먼저 소비하고 있으면 로그인 화면에서 안내한다. URL의 다른 query/hash는 보존하되 `authError`는 `history.replaceState`로 즉시 제거한다. 이어 `getSession()`을 호출해 성공하면 `isLoggedIn=true`와 `userInfo`를 설정하고, 401 등 실패면 익명 상태를 유지한다. 토큰이나 userId는 localStorage에 저장하지 않는다.
 
 ## AI 대전 흐름
 
@@ -105,6 +106,6 @@ Canvas는 500×500 내부 좌표를 사용하며 turn state에 해당하는 snap
 - `GameArena`에 타이머, 네트워크, 상태, editor, 결과 화면 책임이 여전히 집중되어 있다.
 - 화면 전환이 URL router가 아니라 memory state이므로 새로고침/직접 링크 복원이 없다.
 - socket reconnect/backoff와 공통 사용자 오류 UI가 없다.
-- 실 브라우저 E2E와 시각 회귀 테스트가 없다.
+- production browser E2E는 AI guest 흐름만 다루며 두 브라우저 PvP, Google 실제 성공, 시각 회귀는 없다.
 
-이 제약의 후속 작업은 `FE-01`, `FE-02`, `TEST-01`로 관리한다.
+이 제약의 후속 작업은 M3 `FE-01`·`FE-02`와 M2 `AUTH-01`의 남은 실제 Google 성공 smoke로 관리한다.

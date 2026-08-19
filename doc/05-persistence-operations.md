@@ -54,6 +54,8 @@ erDiagram
 - guest username은 `guest_{uuid}`다.
 - role은 `GUEST`, `USER`, `ADMIN` enum 문자열이다.
 - local password만 BCrypt hash를 가지며 Google/guest는 null일 수 있다.
+- 외부 계정은 `(provider, providerId)` unique identity로 조회한다. local/guest처럼 두 값 중 하나가 null인 행은 이 identity에 참여하지 않는다.
+- Google email은 변경될 수 있으므로 저장 계정의 identity나 기존 local 계정 자동 연결 기준으로 사용하지 않는다.
 
 ### GameMatch
 
@@ -128,6 +130,8 @@ readiness에 포함되는 DB·Redis 검사가 네트워크 단절 상태에서 �
 - MySQL migration은 `db/migration/mysql`, 테스트용 H2 migration은 `db/migration/h2`에 분리한다.
 - 빈 MySQL에는 Flyway V1이 네 domain table, FK, unique, 조회 index를 만든다.
 - 기존 Hibernate 관리 schema는 `baseline-version=0`으로 등록한 뒤 같은 V1을 실행한다. V1은 기존 table을 보존하면서 누락된 index와 unique 제약을 추가하고 null map/code/language를 명시적인 legacy 값으로 보정한다.
+- V2는 `users(provider, provider_id)`에 `uk_users_provider_identity` unique 제약을 추가해 동일 Google `sub`의 중복 계정 생성을 막는다. H2 테스트 migration도 같은 계약을 적용한다.
+- V2 배포 전 `provider_id IS NOT NULL`인 기존 행을 `(provider, provider_id)`로 집계해 중복이 없는지 확인한다. 중복이 있으면 계정 소유 관계를 먼저 수동 정리하고 migration을 실행하며 임의 병합하지 않는다.
 - 기존 map을 복원할 수 없는 행은 `{"legacy":true}`로 표시한다. 신규 AI/PvP 결과에는 실제 초기 map JSON이 필수다.
 - migration 후 Hibernate `validate`가 entity와 물리 schema의 타입·필수 table/column 일치를 확인하며 불일치 시 기동을 중단한다.
 - 배포 전 DB backup을 만들고 애플리케이션과 동일 계정으로 migration 권한을 확인해야 한다. 이미 적용된 migration 파일은 수정하지 않고 다음 버전 파일을 추가한다.

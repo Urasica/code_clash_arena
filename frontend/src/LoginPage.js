@@ -7,7 +7,7 @@ import {
 } from './features/auth/authApi';
 
 // [수정] onBack prop 추가 (로비로 돌아가기 기능)
-const LoginPage = ({ onLoginSuccess, onBack }) => {
+const LoginPage = ({ onLoginSuccess, onBack, oauthError, onOAuthStart }) => {
   const [mode, setMode] = useState('login'); // 'login' or 'signup'
   const [formData, setFormData] = useState({ username: '', password: '', nickname: '' });
 
@@ -46,6 +46,7 @@ const LoginPage = ({ onLoginSuccess, onBack }) => {
   };
 
   const handleGoogleLogin = () => {
+    onOAuthStart();
     window.location.href = GOOGLE_LOGIN_URL;
   };
 
@@ -65,6 +66,15 @@ const LoginPage = ({ onLoginSuccess, onBack }) => {
 
       <div className="glass-panel" style={{ width: '400px', padding: '40px', textAlign: 'center' }}>
         <h1 className="cyber-title" style={{ fontSize: '2.5rem', marginBottom: '30px' }}>CODE BATTLE</h1>
+
+        {oauthError && (
+          <div
+            role="alert"
+            style={{ marginBottom: '20px', color: '#ff6b8a', fontSize: '14px' }}
+          >
+            {oauthError}
+          </div>
+        )}
         
         {/* Local Login Form */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>

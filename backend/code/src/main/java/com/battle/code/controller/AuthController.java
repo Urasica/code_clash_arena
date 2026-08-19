@@ -7,7 +7,9 @@ import com.battle.code.repository.UserRepository;
 import com.battle.code.service.AuthService;
 import com.battle.code.security.AuthCookieService;
 import com.battle.code.security.JwtTokenProvider;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -110,10 +112,14 @@ public class AuthController {
 
     // 로그아웃
     @PostMapping("/logout")
-    public ResponseEntity<?> logout(HttpServletResponse response) {
+    public ResponseEntity<?> logout(HttpServletRequest request, HttpServletResponse response) {
         log.info("[LOGOUT] Request");
 
         authCookieService.clearTokenCookie(response);
+        HttpSession session = request.getSession(false);
+        if (session != null) {
+            session.invalidate();
+        }
 
         log.info("[LOGOUT] Success");
         return ResponseEntity.ok("Logout Success");
