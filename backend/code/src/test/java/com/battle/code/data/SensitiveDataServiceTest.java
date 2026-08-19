@@ -22,6 +22,7 @@ import static org.mockito.Mockito.when;
 class SensitiveDataServiceTest {
 
     private SensitivePayloadCipher cipher;
+    private SensitiveDataProperties properties;
     private SensitiveDataAuditService auditService;
     private GameMatchRepository matchRepository;
     private MatchPlayerRepository playerRepository;
@@ -30,7 +31,7 @@ class SensitiveDataServiceTest {
 
     @BeforeEach
     void setUp() {
-        SensitiveDataProperties properties = new SensitiveDataProperties();
+        properties = new SensitiveDataProperties();
         cipher = new SensitivePayloadCipher(properties);
         auditService = mock(SensitiveDataAuditService.class);
         matchRepository = mock(GameMatchRepository.class);
@@ -98,5 +99,20 @@ class SensitiveDataServiceTest {
 
         assertThatThrownBy(() -> service.purgeForUser("match-1", 7L))
                 .isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    void enforcesUtf8ByteLimitsBeforeEncryption() {
+        properties.setSubmittedCodeMaxBytes(3);
+        properties.setReplayMaxBytes(3);
+
+        assertThat(service.protectSubmittedCode("match-1", "p1", "가"))
+                .startsWith("cca:v1:");
+        assertThatThrownBy(() -> service.protectSubmittedCode("match-1", "p1", "가a"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("storage limit");
+        assertThatThrownBy(() -> service.protectReplay("match-1", "1234"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("storage limit");
     }
 }
