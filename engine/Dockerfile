@@ -1,5 +1,5 @@
 # Dockerfile
-FROM node:24.18.0-bookworm-slim AS node-runtime
+FROM node:26.7.0-bookworm-slim AS node-runtime
 
 FROM ubuntu:24.04
 
