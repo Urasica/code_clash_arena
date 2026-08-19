@@ -9,7 +9,7 @@
 | 경계 | 지원 기준 | 적용 위치 |
 | --- | --- | --- |
 | Backend Java | Java 21 기준 compile, 실행 21~25 | `pom.xml`의 release 21·Maven Enforcer, CI Java 21 |
-| Maven | 3.9.x, Wrapper 3.9.11 | `.mvn/wrapper`, Maven Enforcer |
+| Maven | 3.9.x, Wrapper 3.9.16 | `.mvn/wrapper`, Maven Enforcer |
 | Spring Boot | 3.5.16 | parent BOM이 Spring·Hibernate·Testcontainers 등 호환 버전을 관리 |
 | MySQL/Flyway | MySQL 8.4, Flyway 11.20.3 | Compose·Testcontainers·`flyway-mysql`, 실제 migrate/validate smoke |
 | JWT | JJWT 0.13.0 | API/impl/Jackson 세 모듈을 같은 property로 고정 |
@@ -47,10 +47,11 @@ Vite entry는 `frontend/index.html`과 `src/index.jsx`다. JSX를 포함하는 �
 
 ## 정기 갱신 정책
 
-`.github/dependabot.yml`은 매주 월요일 KST에 Maven, npm, GitHub Actions, root Docker, engine Docker를 순차 확인한다.
+`.github/dependabot.yml`은 매주 월요일 KST에 Maven, npm, GitHub Actions, engine Docker를 순차 확인한다. 루트에는 Dependabot Docker가 지원하는 Dockerfile이나 Kubernetes manifest가 없으므로 Compose image는 이 설정의 대상이 아니다.
 
-- minor/patch update는 생태계별 group으로 묶어 PR 수를 제한한다.
-- major update는 자동 group에 넣지 않고 migration note, 지원 행렬, 기능 회귀 범위를 별도 검토한다.
+- 정기 minor/patch update는 생태계별 group 하나로 묶고 열린 version update PR을 생태계당 1개로 제한한다.
+- 정기 major version PR은 생성하지 않는다. major 변경이 필요하면 별도 작업에서 migration note, 지원 행렬, 기능·Release 회귀 범위를 먼저 정의한다.
+- 이 version update 제한은 취약점 해결을 위한 Dependabot security update를 차단하지 않는다.
 - 생성된 PR도 일반 PR과 동일하게 Ubuntu/Windows PR Gate를 통과해야 한다.
 - runtime만이 아니라 dev dependency를 포함한 전체 npm audit의 high 이상을 차단한다. 현재 전체 결과는 0건이다.
 - lockfile 변경 PR은 `npm ci`, test, production build가 함께 성공해야 한다.
@@ -78,3 +79,4 @@ Vite entry는 `frontend/index.html`과 `src/index.jsx`다. JSX를 포함하는 �
 - [Node.js release schedule](https://nodejs.org/en/about/previous-releases)
 - [Flyway MySQL support](https://documentation.red-gate.com/flyway/reference/database-driver-reference/mysql)
 - [Dependabot version update configuration](https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/secure-your-dependencies/configure-version-updates)
+- [Dependabot update 대상 제어](https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/manage-your-dependency-security/controlling-dependencies-updated)
