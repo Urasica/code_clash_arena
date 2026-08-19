@@ -83,8 +83,10 @@ npm.cmd run test:e2e
 
 | workflow | 실행 조건 | 환경 | 범위 |
 | --- | --- | --- | --- |
-| `PR Gate` | pull request, main push | Ubuntu, Windows | Java 21·Node 24, backend 90 pass/통합 6 skip, frontend 6건·Vite build·전체 의존성 audit, engine 규칙 4건 |
+| `PR Gate` | ready pull request의 생성·갱신·재오픈 | Ubuntu, Windows | Java 21·Node 24, backend 90 pass/통합 6 skip, frontend 6건·Vite build·전체 의존성 audit, engine 규칙 4건 |
 | `Release Gate` | 수동 실행, `v*` tag push | Ubuntu | Java 21·Node 24, 의존성 audit, engine image·8건/5언어, Testcontainers 실제 통합 6건, package, Compose backend, Chromium E2E |
+
+Draft PR은 무거운 regression job을 실행하지 않는다. Ready PR의 최신 커밋만 검사하며 추가 push가 오면 같은 PR의 이전 실행을 취소한다. `main` 병합 후에는 PR Gate를 반복하지 않고, repository ruleset이 Ubuntu·Windows 두 PR check와 최신 base 반영을 병합 전에 강제한다. Release Gate는 실제 인프라·engine·DB·인증 경계 변경에서 PR branch를 대상으로 병합 전에 수동 실행한다.
 
 Release 실패 시 backend log, Surefire report, Playwright report·trace·screenshot·video를 artifact로 보존한다. 두 workflow는 repository read 권한만 사용하며 배포나 외부 시스템 변경은 수행하지 않는다.
 

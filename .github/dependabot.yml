@@ -7,16 +7,12 @@ updates:
       day: monday
       time: "09:00"
       timezone: Asia/Seoul
+    open-pull-requests-limit: 0
     groups:
-      backend-minor-patch:
-        update-types:
-          - minor
-          - patch
-    ignore:
-      - dependency-name: "*"
-        update-types:
-          - version-update:semver-major
-    open-pull-requests-limit: 1
+      backend-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
 
   - package-ecosystem: npm
     directory: /frontend
@@ -25,16 +21,12 @@ updates:
       day: monday
       time: "09:15"
       timezone: Asia/Seoul
+    open-pull-requests-limit: 0
     groups:
-      frontend-minor-patch:
-        update-types:
-          - minor
-          - patch
-    ignore:
-      - dependency-name: "*"
-        update-types:
-          - version-update:semver-major
-    open-pull-requests-limit: 1
+      frontend-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
 
   - package-ecosystem: github-actions
     directory: /
@@ -43,16 +35,12 @@ updates:
       day: monday
       time: "09:30"
       timezone: Asia/Seoul
+    open-pull-requests-limit: 0
     groups:
-      actions-minor-patch:
-        update-types:
-          - minor
-          - patch
-    ignore:
-      - dependency-name: "*"
-        update-types:
-          - version-update:semver-major
-    open-pull-requests-limit: 1
+      actions-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
 
   - package-ecosystem: docker
     directory: /engine
@@ -61,13 +49,9 @@ updates:
       day: monday
       time: "10:00"
       timezone: Asia/Seoul
+    open-pull-requests-limit: 0
     groups:
-      engine-minor-patch:
-        update-types:
-          - minor
-          - patch
-    ignore:
-      - dependency-name: "*"
-        update-types:
-          - version-update:semver-major
-    open-pull-requests-limit: 1
+      engine-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
