@@ -77,7 +77,7 @@
 - 근거: MySQL 8.4 실행 시 이전 Flyway가 공식 지원 경고를 냈고 CRA 5 전이 트리의 lockfile audit은 낮음 11, 보통 15, 높음 27, 심각 2로 총 55건이었다. Node 20도 2026-03-24에 지원이 끝나 현재 CI 기준으로 유지할 수 없었다.
 - 구현: Spring Boot 3.5.16·Java 21·Flyway 11.20.3·JJWT 0.13.0으로 정렬하고 Maven 3.9/Java 21~25 enforcer를 추가했다. CI와 engine은 Node 24·Java 21로 맞췄다.
 - 프론트: CRA/react-scripts를 Vite 8·Vitest 4로 교체하고 JSX 확장자와 E2E 수집 경계를 명시했다. 새 npm lockfile은 160 package를 재현하며 전체 audit 0건이다.
-- 갱신 정책: Maven, npm, Actions, root/engine Docker에 월요일 주간 Dependabot을 설정했다. minor/patch는 생태계별로 묶고 major는 별도 검토하며 모든 PR은 Windows/Linux PR Gate를 통과해야 한다.
+- 갱신 정책: 후속 운영 보정에서 정기 Dependabot version PR은 중단하고 Security Update만 생태계별로 묶었다. 일반 dependency 갱신은 roadmap 작업으로 수행하며 모든 PR은 Windows/Linux PR Gate를 병합 전에 통과해야 한다.
 - 예외: Monaco 0.56이 취약한 DOMPurify 3.4.8을 정확히 고정하므로 npm override로 3.4.13을 사용한다. Monaco가 수정 버전을 직접 채택하면 override 제거를 먼저 검토한다.
 - 검증: 새 lockfile `npm ci`, 프론트 6건·Vite production build·전체 npm audit 0건, 백엔드 82건 중 77 pass/통합 5 skip, MySQL 8.4·Redis·장애 주입 실제 통합 5건, engine 8건/5언어가 모두 통과했다. Flyway migrate/validate에서 지원 경고가 출력되지 않았다.
 - 현재 설계: [`../doc/08-dependency-build.md`](../doc/08-dependency-build.md)

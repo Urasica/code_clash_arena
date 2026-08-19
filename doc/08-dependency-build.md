@@ -47,12 +47,11 @@ Vite entry는 `frontend/index.html`과 `src/index.jsx`다. JSX를 포함하는 �
 
 ## 정기 갱신 정책
 
-`.github/dependabot.yml`은 매주 월요일 KST에 Maven, npm, GitHub Actions, engine Docker를 순차 확인한다. 루트에는 Dependabot Docker가 지원하는 Dockerfile이나 Kubernetes manifest가 없으므로 Compose image는 이 설정의 대상이 아니다.
+`.github/dependabot.yml`은 Maven, npm, GitHub Actions, engine Docker의 Security Update 범위를 정의한다. 모든 ecosystem의 `open-pull-requests-limit`은 `0`이므로 정기 version update PR은 만들지 않는다. 루트에는 Dependabot Docker가 지원하는 Dockerfile이나 Kubernetes manifest가 없으므로 Compose image는 대상이 아니다.
 
-- 정기 minor/patch update는 생태계별 group 하나로 묶고 열린 version update PR을 생태계당 1개로 제한한다.
-- 정기 major version PR은 생성하지 않는다. major 변경이 필요하면 별도 작업에서 migration note, 지원 행렬, 기능·Release 회귀 범위를 먼저 정의한다.
-- 이 version update 제한은 취약점 해결을 위한 Dependabot security update를 차단하지 않는다.
-- 생성된 PR도 일반 PR과 동일하게 Ubuntu/Windows PR Gate를 통과해야 한다.
+- 정기 version update는 patch/minor/major 모두 roadmap의 명시적 dependency 작업에서 수동으로 수행한다.
+- Dependabot Security Update만 ecosystem별 한 PR로 묶어 허용한다. 보안상 필요한 major 변경도 자동 병합하지 않고 migration·Release 회귀 범위를 검토한다.
+- 보안 PR도 일반 PR과 동일하게 Ubuntu/Windows PR Gate를 통과해야 한다.
 - runtime만이 아니라 dev dependency를 포함한 전체 npm audit의 high 이상을 차단한다. 현재 전체 결과는 0건이다.
 - lockfile 변경 PR은 `npm ci`, test, production build가 함께 성공해야 한다.
 - MySQL, Flyway, Spring Boot 중 하나를 변경하면 실제 인프라 5종과 schema migrate/validate를 실행한다.
@@ -68,7 +67,7 @@ Vite entry는 `frontend/index.html`과 `src/index.jsx`다. JSX를 포함하는 �
 
 ## 현재 제약
 
-- Dependabot은 버전 PR과 기존 gate를 제공하지만 SBOM, image scan/signature, immutable artifact promotion은 아직 없다. M4 `OPS-02`에서 다룬다.
+- Dependabot은 vulnerability alert와 Security Update만 제공하며 정기 version update는 자동화하지 않는다. SBOM, image scan/signature, immutable artifact promotion은 아직 없고 M4 `OPS-02`에서 다룬다.
 - Ubuntu package 설치는 이미지 build 시점의 patch를 가져오므로 digest 기반 완전 재현성은 아직 보장하지 않는다. Node base는 명시적 patch tag를 사용한다.
 - React 19, Vite/Vitest의 다음 major, Spring Boot 4는 자동 갱신 대상이 아니다.
 

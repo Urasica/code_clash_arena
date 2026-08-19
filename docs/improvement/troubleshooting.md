@@ -280,3 +280,13 @@
 - 임시 조치: 원본 Dependabot PR을 그대로 병합하지 않았다.
 - 근본 해결: 검증된 기존 Wrapper script는 유지하고 Maven distribution URL과 Unix 실행 권한만 3.9.16 기준으로 반영했다.
 - 검증 결과: 일반 Windows 사용자 경로에서 Maven 3.9.16 확인과 백엔드 전체 빠른 테스트가 통과했다.
+
+## TS-029 병합 후 PR Gate 반복과 Dependabot version PR 재생성
+
+- 상태: 해결
+- 현상: PR에서 Ubuntu·Windows Gate를 통과한 뒤 `main` merge commit에서 같은 Gate가 다시 실행됐고, `dependabot.yml` 변경은 생태계별 update Action과 새 version PR을 만들었다.
+- 재현 조건: PR Gate가 `pull_request`와 `main` push를 모두 구독하고 Dependabot version update의 열린 PR 한도가 1 이상이다.
+- 원인: 병합 전 check를 강제하는 branch ruleset이 없는 상태에서 사후 검증을 보완하려고 `main` push trigger를 유지했고, 정기 dependency 제안도 CI와 같은 시점에 활성화했다.
+- 임시 조치: 병합 후 완료 Action 기록은 삭제하지 않고 원인 추적 근거로 유지했다. 지원 기준과 다른 engine version PR은 닫았다.
+- 근본 해결: PR Gate를 ready PR 전용으로 제한하고 PR 번호별 최신 실행만 유지한다. `main` ruleset이 두 OS check와 최신 base 반영을 병합 전에 강제하며, 정기 version update는 중단하고 Security Update만 그룹으로 허용한다.
+- 검증 결과: workflow와 Dependabot YAML의 trigger·group 계약을 정적 검증하고 실제 PR에서 두 OS check 이름을 확인한 뒤 ruleset을 적용한다.
