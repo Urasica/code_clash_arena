@@ -2,8 +2,11 @@ const { test, expect } = require('@playwright/test');
 
 test('guest completes an AI match from the lobby', async ({ page }) => {
   test.setTimeout(120_000);
+  const pageErrors = [];
+  page.on('pageerror', (error) => pageErrors.push(error.message));
 
   await page.goto('/');
+  expect(pageErrors, 'browser page errors during initial render').toEqual([]);
   await expect(page.getByRole('heading', { name: /CODE CRASH ARENA/ })).toBeVisible();
 
   await page.getByRole('button', { name: '로그인 / 게스트' }).click();

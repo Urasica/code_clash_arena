@@ -54,8 +54,17 @@ const createServer = () => http.createServer((request, response) => {
 });
 
 const buildFrontend = (environment = process.env) => {
-  const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  const build = spawnSync(npmCommand, ['run', 'build'], {
+  const npmCli = environment.npm_execpath;
+  let command = 'npm';
+  let args = ['run', 'build'];
+  if (npmCli) {
+    command = process.execPath;
+    args = [npmCli, 'run', 'build'];
+  } else if (process.platform === 'win32') {
+    command = environment.ComSpec || 'cmd.exe';
+    args = ['/d', '/s', '/c', 'npm.cmd run build'];
+  }
+  const build = spawnSync(command, args, {
     cwd: frontendRoot,
     env: environment,
     stdio: 'inherit',

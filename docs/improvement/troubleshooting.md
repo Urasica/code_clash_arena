@@ -231,12 +231,32 @@
 - 근본 해결: `COUNT(DISTINCT index_name)`으로 실제 인덱스 이름 수를 검사한다.
 - 검증 결과: 같은 MySQL 8.4 Testcontainers 환경에서 V1→V3 migrate/validate와 실제 인프라 6건이 모두 통과했다.
 
-## TS-024 Vite 전환 후 README의 CRA test 옵션 잔존
+## TS-024 Vite 전환 후 CRA test 옵션 잔존
 
 - 상태: 해결
-- 현상: 현재 README의 프론트 검증 명령을 실행하면 Vitest가 `Unknown option --watchAll`로 즉시 종료한다.
+- 현상: PR Gate의 Ubuntu·Windows 프론트 단위 테스트가 모두 `Unknown option --watchAll`로 즉시 종료했다. 같은 옵션이 남아 있던 README 명령도 실패했다.
 - 재현 조건: Vite/Vitest 전환 뒤 `npm.cmd test -- --watchAll=false`를 실행한다.
-- 원인: `--watchAll=false`는 CRA/Jest 실행 방식에서 사용하던 옵션이고 현재 `test` script는 이미 one-shot인 `vitest run`이다. DEP-01에서 package script는 바뀌었지만 현재 실행 문서 두 곳이 이전 명령을 유지했다.
+- 원인: `--watchAll=false`는 CRA/Jest 실행 방식에서 사용하던 옵션이고 현재 `test` script는 이미 one-shot인 `vitest run`이다. DEP-01에서 package script는 바뀌었지만 PR workflow와 현재 실행 문서가 이전 명령을 유지했다.
 - 임시 조치: 임의의 Vitest 호환 옵션으로 치환하지 않았다.
-- 근본 해결: 현재 README와 테스트 설계 문서의 명령을 `npm.cmd test`로 통일했다. 과거 기준선·완료 기록의 당시 CRA 명령은 역사적 사실이라 유지했다.
+- 근본 해결: PR Gate는 `npm test`, 현재 README와 테스트 설계 문서는 `npm.cmd test`로 통일했다. 과거 기준선·완료 기록의 당시 CRA 명령은 역사적 사실이라 유지했다.
 - 검증 결과: Vitest 2 suite/6 test와 Vite production build가 통과했다.
+
+## TS-025 Vite production bundle에서 SockJS의 `global` 미정의
+
+- 상태: 해결
+- 현상: Release Gate의 Chromium 화면이 배경만 표시한 채 첫 제목을 렌더링하지 못했다. Playwright trace의 page error는 `ReferenceError: global is not defined`였다.
+- 재현 조건: `sockjs-client`를 포함한 Vite production build를 브라우저에서 실행한다.
+- 원인: SockJS의 CommonJS 브라우저 모듈 일부가 Node 방식의 `global`을 참조한다. CRA가 제공하던 암묵적 호환 처리는 Vite production bundle에 없다.
+- 임시 조치: 애플리케이션 entry에서 전역 변수를 직접 생성하거나 SockJS 코드를 수정하지 않았다.
+- 근본 해결: Vite의 `define`에서 `global`을 표준 브라우저 전역인 `globalThis`로 치환했다. E2E는 첫 화면의 `pageerror`를 수집해 렌더링 대기 시간 초과보다 직접적인 원인을 보고한다.
+- 검증 결과: production build를 제공한 Chromium에서 초기 렌더링, 게스트 로그인, AI 전투 완료까지 통과했다.
+
+## TS-026 Windows에서 Playwright 사전 build가 `spawnSync npm.cmd EINVAL`
+
+- 상태: 해결
+- 현상: Windows 로컬 `npm.cmd run test:e2e`가 브라우저를 열기 전에 `spawnSync npm.cmd EINVAL`로 종료했다.
+- 재현 조건: Playwright global setup이 Node `spawnSync`로 `npm.cmd run build`를 직접 실행한다.
+- 원인: Windows의 `.cmd` shim을 `shell` 없이 직접 생성하는 방식은 Node 실행 환경에 따라 지원되지 않는다.
+- 임시 조치: `shell: true`나 문자열 command 조합은 사용하지 않았다.
+- 근본 해결: npm이 제공한 `npm_execpath`를 현재 Node 실행 파일로 호출해 같은 npm CLI를 운영체제와 무관하게 재사용한다.
+- 검증 결과: Windows에서 E2E 사전 production build와 Chromium 게스트 AI 흐름 1건이 통과했다.

@@ -43,7 +43,7 @@ release gate
   └─ production frontend + Chromium user flow
 ```
 
-Vite entry는 `frontend/index.html`과 `src/index.jsx`다. JSX를 포함하는 화면 파일은 `.jsx`, 순수 API·설정·계산 코드는 `.js`를 사용한다. Vitest는 `src/**/*.test.{js,jsx}`만 수집하고 `frontend/e2e`는 Playwright가 별도로 실행한다.
+Vite entry는 `frontend/index.html`과 `src/index.jsx`다. JSX를 포함하는 화면 파일은 `.jsx`, 순수 API·설정·계산 코드는 `.js`를 사용한다. SockJS의 CommonJS 브라우저 호환을 위해 build 시 `global`은 표준 `globalThis`로 치환한다. Vitest는 `src/**/*.test.{js,jsx}`만 수집하고 `frontend/e2e`는 Playwright가 별도로 실행한다. E2E의 사전 build는 npm이 전달한 `npm_execpath`를 현재 Node process로 호출하므로 Windows와 Linux에서 같은 CLI를 사용한다.
 
 ## 정기 갱신 정책
 

@@ -62,7 +62,7 @@ jobs:
 
       - name: Frontend unit tests
         working-directory: frontend
-        run: npm test -- --watchAll=false
+        run: npm test
 
       - name: Frontend production build
         working-directory: frontend
