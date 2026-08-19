@@ -143,4 +143,4 @@ Spring Boot 단독 실행은 루트 `.env`를 자동으로 읽지 않습니다. 
 - Docker socket과 management endpoint는 외부에 공개하지 않습니다.
 - 암호화 키를 교체할 때는 기존 키를 이전 키 목록에 유지합니다.
 
-세부 기준은 [인증·HTTP API](doc/02-auth-http-api.md), [코드 실행·게임 엔진](doc/04-code-execution-engine.md), [관측성·장애 대응](doc/07-observability.md), [빌드·의존성](doc/08-dependency-build.md), [민감 데이터 수명](doc/09-sensitive-data-lifecycle.md)에 나누어 기록합니다.
+세부 기준은 [인증·HTTP API](doc/02-auth-http-api.md), [코드 실행·게임 엔진](doc/04-code-execution-engine.md), [관측성·장애 대응](doc/07-observability.md), [빌드·의존성](doc/08-dependency-build.md), [민감 데이터 수명](doc/09-sensitive-data-lifecycle.md)에 나누어 기록되어 있습니다.
