@@ -33,6 +33,7 @@ code_clash_arena/
 │  ├─ controller/         REST·STOMP 진입점
 │  ├─ service/            인증·매칭·게임 오케스트레이션
 │  ├─ execution/          Docker 실행과 임시 작업공간 관리
+│  ├─ data/               제출 코드·replay 암호화, 보존·삭제, 접근 감사
 │  ├─ observability/      correlation context, metric, engine readiness
 │  ├─ security/, config/  HTTP·JWT·OAuth2·STOMP·Redis 설정
 │  └─ domain/, repository/, dto/
@@ -107,7 +108,7 @@ Google 로그인은 선택 사항입니다. 사용하려면 Spring 표준 환경
 ```powershell
 # 프론트엔드
 Set-Location frontend
-npm.cmd test -- --watchAll=false
+npm.cmd test
 npm.cmd run build
 npm.cmd run audit
 
@@ -117,7 +118,7 @@ Set-Location ../backend/code
 .\mvnw.cmd -DskipTests package
 
 # Testcontainers MySQL·Redis·Toxiproxy와 Docker release 회귀
-.\mvnw.cmd "-Dcca.run.integration=true" "-Dtest=RealInfrastructureSmokeTest,ObservabilityIntegrationTest,DependencyFailureInjectionTest,FullStackAiFlowTest,FullStackPvpFlowTest" test
+.\mvnw.cmd "-Dcca.run.integration=true" "-Dtest=RealInfrastructureSmokeTest,ObservabilityIntegrationTest,DependencyFailureInjectionTest,FullStackAiFlowTest,FullStackPvpFlowTest,SensitiveDataIntegrationTest" test
 
 # 엔진: code-battle-engine 이미지가 있으면 5개 언어 Docker 계약 테스트도 실행
 Set-Location ../..
@@ -149,16 +150,22 @@ npm.cmd run test:e2e
 | `ENGINE_WORKSPACE` | `temp` | 매치별 임시 작업공간 루트 |
 | `ENGINE_READINESS_TIMEOUT` | `3s` | Docker와 engine image readiness 검사 제한 시간 |
 | `MANAGEMENT_PORT` | `8081` | health·Prometheus 내부 endpoint 포트 |
+| `DATA_ENCRYPTION_ACTIVE_KEY_ID`, `DATA_ENCRYPTION_KEY` | 개발 전용 key ID와 Base64 key | 제출 코드·replay AES-256-GCM 활성 키. 운영에서는 반드시 무작위 키로 교체 |
+| `DATA_ENCRYPTION_PREVIOUS_KEYS` | 없음 | 키 교체 중 읽을 `oldId=base64Key` 쉼표 구분 목록 |
+| `DATA_SUBMITTED_CODE_RETENTION`, `DATA_REPLAY_RETENTION` | `7d`, `30d` | 민감 payload TTL |
+| `DATA_MAX_RETAINED_MATCHES`, `DATA_MAX_AUDIT_RECORDS` | `1000`, `100000` | 민감 payload와 감사 로그 DB 성장 상한 |
 | `VITE_API_BASE_URL` | `http://localhost:8080` | 프론트 REST·SockJS 기준 주소 |
 | `SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_ID` | 없음 | Google OAuth Client ID. 실제 값은 `.env` 또는 secret store에만 저장 |
 | `SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_SECRET` | 없음 | Google OAuth Client Secret. 실제 값은 `.env` 또는 secret store에만 저장 |
 | `SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_SCOPE` | `openid,profile,email` | Google OAuth/OIDC 요청 scope |
 
 - 백엔드는 Docker CLI를 직접 호출합니다. Docker socket을 외부에 노출하거나 백엔드 컨테이너에 무제한으로 마운트하지 마세요.
-- Flyway 11.20.3이 MySQL 8.4에 vendor별 V1·V2를 적용하고 Hibernate는 항상 `ddl-auto=validate`로 schema를 검사합니다. V2는 Google provider identity unique 제약을 추가하므로 운영 배포 전 `(provider, provider_id)` 중복 점검, DB backup, migration 권한 확인이 필요합니다. 적용된 migration 파일은 수정하지 마세요.
+- Flyway 11.20.3이 MySQL 8.4에 vendor별 V1·V2·V3를 적용하고 Hibernate는 항상 `ddl-auto=validate`로 schema를 검사합니다. V2는 Google provider identity unique 제약, V3는 민감 데이터 삭제·감사 schema를 추가합니다. 운영 배포 전 `(provider, provider_id)` 중복 점검, DB backup, migration 권한과 암호화 키 주입을 확인하고 적용된 migration 파일은 수정하지 마세요.
 - 브라우저 밖에서 `/api/**` 상태 변경 요청을 보내는 운영 도구도 `FRONTEND_URL`과 같은 `Origin` header를 보내야 합니다.
 - 엔진 컨테이너는 네트워크 없음, 0.5 CPU, 512 MiB, PID 128, 읽기 전용 rootfs로 실행됩니다. 정책 변경 시 실행기 테스트와 운영 문서를 함께 갱신하세요.
 - Redis 매치 데이터는 30분, WebSocket 세션은 2시간 TTL을 사용합니다. 예상 최대 대전 시간과 장애 복구 정책에 맞춰 함께 조정해야 합니다.
+- 제출 코드는 기본 7일, replay는 30일이며 둘 다 최신 1,000 match를 넘으면 먼저 삭제됩니다. 참가자는 `DELETE /api/match/{matchId}/sensitive-data`로 본인 코드와 공유 replay를 즉시 삭제할 수 있습니다.
+- 암호화 키를 바꿀 때 기존 활성 키를 `DATA_ENCRYPTION_PREVIOUS_KEYS`에 유지하세요. 기존 payload가 모두 만료되기 전에 이전 키를 제거하면 복호화할 수 없습니다. 세부 절차는 [민감 데이터 수명 설계](doc/09-sensitive-data-lifecycle.md)를 따릅니다.
 - `.env`, OAuth 비밀, 실제 JWT 비밀과 사용자 제출 코드는 커밋하지 마세요.
 - Google 계정은 변경 가능한 email이 아니라 `sub`로 식별하며 같은 email의 local 계정과 자동 병합하지 않습니다. logout은 애플리케이션 cookie/session만 정리하고 Google 계정 전체 로그아웃이나 권한 철회를 수행하지 않습니다.
 - `MANAGEMENT_PORT`는 인증 없이 상태와 metric을 제공하므로 외부에 공개하지 말고 내부 scrape 경계에서만 접근하세요. 기본 경보 규칙은 `ops/prometheus/alerts.yml`에 있습니다.

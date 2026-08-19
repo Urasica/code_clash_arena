@@ -23,6 +23,7 @@
 | `RateLimitFilter` | 로그인·게스트·컴파일·실행 요청을 사용자/IP 단위로 제한 |
 | `ProductionSecurityValidator` | 운영 secret·cookie·HTTPS 설정을 기동 시 검증 |
 | `GuestAccountJanitor` | 보존 기간이 지난 미참조 guest 계정을 주기적으로 정리 |
+| `SensitiveDataController` | 인증 참가자의 제출 코드와 공유 replay 즉시 삭제 |
 | `GlobalExceptionHandler` | validation/auth/conflict/not-found/unexpected 오류를 `ApiError`로 변환 |
 
 ## 인증 흐름
@@ -63,6 +64,7 @@ JWT subject와 Spring `UserDetails.username`은 로그인 ID가 아니라 DB `Us
 | POST | `/api/match/land-grab/start` | 필요 | 없음 | matchId/walls/coins |
 | POST | `/api/match/land-grab/compile` | 필요 | matchId/userCode/language | status/error |
 | POST | `/api/match/land-grab/run` | 필요 | matchId/userCode/language/difficulty | engine result |
+| DELETE | `/api/match/{matchId}/sensitive-data` | 필요 | 없음 | matchId/submittedCodes/replays 삭제 건수 |
 
 `/api/match/**`는 Spring Security에서 인증을 요구한다. `/api/auth/**`, OAuth2 callback, OPTIONS는 허용된다.
 
@@ -72,6 +74,7 @@ JWT subject와 Spring `UserDetails.username`은 로그인 ID가 아니라 DB `Us
 - login: username/password 필수 및 길이 검증.
 - AI compile/run: UUID matchId, 64,000자 이하 code, 지원 언어, 선택적 easy/normal/hard 난이도.
 - STOMP match/game 요청: land_grab gameType, UUID matchId, 필수 code와 지원 언어.
+- 민감 데이터 삭제: 존재하는 match 참가자만 가능하다. 본인 제출 코드와 공유 replay를 삭제하고 다른 참가자의 제출 코드는 유지한다.
 - `GlobalExceptionHandler.ApiError`: `{code, message}`.
 - 처리 코드: `VALIDATION_ERROR`, `MALFORMED_REQUEST`, `INVALID_CREDENTIALS`, `CONFLICT`, `BAD_REQUEST`, `NOT_FOUND`, `EXECUTION_ERROR`, `EXECUTION_INTERRUPTED`, `INTERNAL_ERROR`.
 - 보안 처리 코드: `CSRF_REJECTED`, `RATE_LIMITED`, `RATE_LIMIT_UNAVAILABLE`.
@@ -127,6 +130,7 @@ logout은 애플리케이션 JWT cookie와 존재하는 임시 HTTP session만 �
 - Spring 기본 CSRF token 대신 cookie 인증 구조에 맞춘 동일-origin 정책을 사용한다. CORS도 허용되지 않은 `Origin`을 먼저 차단할 수 있다.
 - 로그인 10회, guest 5회, compile 20회, run 10회를 기본 1분 window로 제한한다. 인증 요청은 user ID, 비인증 요청은 remote IP가 기준이며 Redis 장애 시 보호 endpoint는 `503 RATE_LIMIT_UNAVAILABLE`로 닫힌다.
 - `prod` profile은 32자 미만 또는 개발 기본 JWT secret, 비보안 cookie, 잘못된 SameSite, HTTP frontend URL을 거부한다.
+- `prod` profile은 제출 코드/replay 암호화의 개발 기본 키도 거부한다.
 - 생성 후 24시간이 지난 guest 중 `match_player`가 참조하지 않는 계정만 주기적으로 삭제한다.
 - secret rotation은 배포 운영 절차에 속하며 자동화하지 않는다. AUTH-01에서 claim·충돌·취소·logout 정책은 자동 테스트로 고정했고, 실제 Google redirect·동의·취소·최초 성공·logout·동일 계정 재로그인을 로컬 smoke로 검증했다. 재로그인 뒤에도 `provider=GOOGLE` 사용자 수와 내부 ID가 유지됐다.
 - Land Grab 성공 응답은 `StartMatchResponseDto`, `CompileResultDto`, `MatchExecutionResultDto`로 고정되어 있으며 engine의 snake_case 필드도 직렬화 테스트로 보호한다.

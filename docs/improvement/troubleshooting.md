@@ -220,3 +220,23 @@
 - 임시 조치: deprecated esbuild loader override로 `.js` 전체를 JSX로 취급하려 했지만 Vite 8의 Oxc/Rolldown 경로에는 적용되지 않아 제거했다.
 - 근본 해결: 실제 JSX를 가진 화면·entry·컴포넌트 test를 `.jsx`로 바꾸고 Vitest include를 `src/**/*.test.{js,jsx}`로 제한했다. E2E는 Playwright만 소유한다.
 - 검증 결과: Vitest 2 suite/6 test와 Vite production build가 통과하고 E2E spec은 단위 test에서 수집되지 않는다.
+
+## TS-023 MySQL 복합 인덱스를 두 개로 계산
+
+- 상태: 해결
+- 현상: Flyway V3와 민감 데이터 기능은 정상 동작하지만 실제 인프라 smoke가 감사 인덱스 2개를 기대한 assertion에서 실제 값 3으로 실패했다.
+- 재현 조건: `information_schema.statistics`에서 `idx_sensitive_audit_occurred_at`과 `(match_uuid, occurred_at)` 복합 인덱스를 `COUNT(*)`로 센다.
+- 원인: MySQL은 `statistics`에 인덱스 하나당 한 행이 아니라 인덱스 column마다 한 행을 제공한다. 단일 column 인덱스 1행과 복합 인덱스 2행이 합쳐져 3이 됐다.
+- 임시 조치: 기대값을 3으로 바꾸지 않았다. 이는 인덱스 개수가 아니라 현재 column 구성에 테스트를 결합한다.
+- 근본 해결: `COUNT(DISTINCT index_name)`으로 실제 인덱스 이름 수를 검사한다.
+- 검증 결과: 같은 MySQL 8.4 Testcontainers 환경에서 V1→V3 migrate/validate와 실제 인프라 6건이 모두 통과했다.
+
+## TS-024 Vite 전환 후 README의 CRA test 옵션 잔존
+
+- 상태: 해결
+- 현상: 현재 README의 프론트 검증 명령을 실행하면 Vitest가 `Unknown option --watchAll`로 즉시 종료한다.
+- 재현 조건: Vite/Vitest 전환 뒤 `npm.cmd test -- --watchAll=false`를 실행한다.
+- 원인: `--watchAll=false`는 CRA/Jest 실행 방식에서 사용하던 옵션이고 현재 `test` script는 이미 one-shot인 `vitest run`이다. DEP-01에서 package script는 바뀌었지만 현재 실행 문서 두 곳이 이전 명령을 유지했다.
+- 임시 조치: 임의의 Vitest 호환 옵션으로 치환하지 않았다.
+- 근본 해결: 현재 README와 테스트 설계 문서의 명령을 `npm.cmd test`로 통일했다. 과거 기준선·완료 기록의 당시 CRA 명령은 역사적 사실이라 유지했다.
+- 검증 결과: Vitest 2 suite/6 test와 Vite production build가 통과했다.
