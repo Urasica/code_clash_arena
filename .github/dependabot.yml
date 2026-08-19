@@ -12,7 +12,11 @@ updates:
         update-types:
           - minor
           - patch
-    open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
+    open-pull-requests-limit: 1
 
   - package-ecosystem: npm
     directory: /frontend
@@ -26,7 +30,11 @@ updates:
         update-types:
           - minor
           - patch
-    open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
+    open-pull-requests-limit: 1
 
   - package-ecosystem: github-actions
     directory: /
@@ -40,14 +48,11 @@ updates:
         update-types:
           - minor
           - patch
-
-  - package-ecosystem: docker
-    directory: /
-    schedule:
-      interval: weekly
-      day: monday
-      time: "09:45"
-      timezone: Asia/Seoul
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
+    open-pull-requests-limit: 1
 
   - package-ecosystem: docker
     directory: /engine
@@ -56,3 +61,13 @@ updates:
       day: monday
       time: "10:00"
       timezone: Asia/Seoul
+    groups:
+      engine-minor-patch:
+        update-types:
+          - minor
+          - patch
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
+    open-pull-requests-limit: 1

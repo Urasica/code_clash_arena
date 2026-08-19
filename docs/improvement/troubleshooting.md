@@ -260,3 +260,23 @@
 - 임시 조치: `shell: true`나 문자열 command 조합은 사용하지 않았다.
 - 근본 해결: npm이 제공한 `npm_execpath`를 현재 Node 실행 파일로 호출해 같은 npm CLI를 운영체제와 무관하게 재사용한다.
 - 검증 결과: Windows에서 E2E 사전 production build와 Chromium 게스트 AI 흐름 1건이 통과했다.
+
+## TS-027 Dependabot 최초 활성화 후 major PR·Action 일괄 생성
+
+- 상태: 해결
+- 현상: DEP-01 설정이 main에 처음 반영되자 10개의 의존성 PR과 각 PR의 PR Gate가 동시에 생성됐고, root Docker update Action 1건은 실패했다.
+- 재현 조건: minor/patch group만 정의하고 major 제외 규칙과 생태계별 PR 한도를 두지 않은 채 새 `dependabot.yml`을 main에 반영한다. Dockerfile이 없는 `/`도 Docker ecosystem 대상으로 등록한다.
+- 원인: group에 포함되지 않은 major update도 Dependabot의 기본 version update 대상이며 각각 별도 PR이 된다. Docker ecosystem은 root Compose file을 manifest로 사용하지 못해 `No Dockerfiles nor Kubernetes YAML found in /`로 종료했다.
+- 임시 조치: 생성된 Action 기록은 감사 근거이므로 삭제하지 않았다. 지원 범위를 벗어난 major PR만 닫았다.
+- 근본 해결: 모든 활성 생태계에서 `version-update:semver-major`를 제외하고 minor/patch를 한 group으로 묶어 열린 PR을 1개로 제한했다. 유효한 manifest가 없는 root Docker 항목은 제거하고 `/engine`만 유지했다.
+- 검증 결과: Dependabot YAML 구성, 기존 PR 변경 범위와 Gate 결과를 대조했다. Maven 3.9.16 patch만 정리 PR에 포함하고 major PR 9건은 적용하지 않는다.
+
+## TS-028 Maven patch PR이 Windows Wrapper 본문까지 재생성
+
+- 상태: 해결
+- 현상: Maven 3.9.16 Dependabot PR의 Windows Gate는 통과했지만 일반 로컬 디렉터리에서 `mvnw.cmd`를 실행하면 `Cannot index into a null array`로 종료했다.
+- 재현 조건: Maven updater가 재생성한 `mvnw.cmd`를 사용하고 사용자 `.m2` 디렉터리가 symbolic link나 junction이 아닌 일반 디렉터리다.
+- 원인: 재생성된 script가 `(Get-Item $MAVEN_M2_PATH).Target[0]`을 null 확인 전에 참조했다. GitHub runner의 경로 형태에서는 드러나지 않아 PR Gate만으로 발견되지 않았다.
+- 임시 조치: 원본 Dependabot PR을 그대로 병합하지 않았다.
+- 근본 해결: 검증된 기존 Wrapper script는 유지하고 Maven distribution URL과 Unix 실행 권한만 3.9.16 기준으로 반영했다.
+- 검증 결과: 일반 Windows 사용자 경로에서 Maven 3.9.16 확인과 백엔드 전체 빠른 테스트가 통과했다.
