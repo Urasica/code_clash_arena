@@ -1,7 +1,7 @@
 # Dockerfile
 FROM node:24.18.0-bookworm-slim AS node-runtime
 
-FROM ubuntu:24.04
+FROM ubuntu:25.10
 
 ENV DEBIAN_FRONTEND=noninteractive
 
