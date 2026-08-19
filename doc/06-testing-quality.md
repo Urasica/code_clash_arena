@@ -8,7 +8,7 @@
 
 | 계층 | 위치 | 현재 수 | 주요 보장 |
 | --- | --- | --- | --- |
-| 프론트 단위/컴포넌트 | `frontend/src/**/*.test.js` | 6 tests | 익명/세션 복원, OAuth 취소 안내·query 정리, token localStorage 부재, AI/draw/disconnect 결과 표시 정책 |
+| 프론트 단위/컴포넌트 | `frontend/src/**/*.test.{js,jsx}` | 6 tests | Vitest/jsdom, 익명/세션 복원, OAuth 취소 안내·query 정리, token localStorage 부재, AI/draw/disconnect 결과 표시 정책 |
 | 프론트 브라우저 | `frontend/e2e` | 1 test | production build, 게스트 인증, 로비·난이도, 맵 생성, Python compile/run, 결과 overlay |
 | 백엔드 빠른 회귀 | `backend/code/src/test/java` | 77 pass | Flyway/H2 V1·V2, DTO·오류·보안 계약, JWT/cookie/logout, Google claim·계정·취소·충돌, Redis Lua 상태·매칭, workspace, 저장 aggregate, correlation context·metric·health |
 | 실제 인프라 통합 | `backend/code/src/test/java/.../integration` | 5 tests | MySQL migration·Redis, 인증/AI 전체 흐름, 두 사용자 PvP 동시 제출·disconnect, readiness·Prometheus·correlation header, DB/Redis 장애·복구 |
@@ -24,6 +24,7 @@
 Set-Location frontend
 npm.cmd test -- --watchAll=false
 npm.cmd run build
+npm.cmd run audit
 
 # backend
 Set-Location ../backend/code
@@ -81,8 +82,8 @@ npm.cmd run test:e2e
 
 | workflow | 실행 조건 | 환경 | 범위 |
 | --- | --- | --- | --- |
-| `PR Gate` | pull request, main push | Ubuntu, Windows | backend 77건, frontend 6건·build, engine 규칙 4건 |
-| `Release Gate` | 수동 실행, `v*` tag push | Ubuntu | engine image·8건/5언어, Testcontainers 실제 통합 5건, package, Compose backend, Chromium E2E |
+| `PR Gate` | pull request, main push | Ubuntu, Windows | Java 21·Node 24, backend 77 pass, frontend 6건·Vite build·전체 의존성 audit, engine 규칙 4건 |
+| `Release Gate` | 수동 실행, `v*` tag push | Ubuntu | Java 21·Node 24, 의존성 audit, engine image·8건/5언어, Testcontainers 실제 통합 5건, package, Compose backend, Chromium E2E |
 
 Release 실패 시 backend log, Surefire report, Playwright report·trace·screenshot·video를 artifact로 보존한다. 두 workflow는 repository read 권한만 사용하며 배포나 외부 시스템 변경은 수행하지 않는다.
 
@@ -115,9 +116,9 @@ init test는 runner 소유 bind mount에 쓰지 않고 유효한 map JSON을 std
 - 실제 Google 공급자 smoke는 수동으로 최초 성공·세션 복원·logout·동일 계정 재사용까지 확인했지만 CI에서는 실제 credential과 사용자 인증을 사용하지 않는다. 자동 gate는 claim·handler·계정 identity 계약까지만 보장한다.
 - Docker daemon/engine timeout 장애 주입과 저장 전달 보장(outbox/retry). DB/Redis readiness의 장애 감지·복구는 보장하지만 실패한 업무 요청의 재시도는 보장하지 않는다.
 - 부하, queue latency, container capacity, 장기 데이터 증가 측정.
-- MySQL 8.4와 현재 Flyway 조합은 실제 검증을 통과했지만 Flyway가 공식 지원 경고를 출력하므로 지원 버전 정렬이 필요하다.
+- 장기 부하에서 lockfile과 base image 갱신이 성능·용량에 미치는 영향은 아직 측정하지 않았다.
 
-원격 Windows/Linux PR Gate와 release workflow는 M2 `TEST-01`에서 성공했고 실제 Google 공급자 smoke는 `AUTH-01`에서 완료했다. 이후 작업은 `DATA-02`, `DEP-01`, `SCALE-01`로 관리한다.
+원격 Windows/Linux PR Gate와 release workflow는 M2 `TEST-01`에서 성공했고 실제 Google 공급자 smoke는 `AUTH-01`에서 완료했다. 지원 버전·lockfile·정기 갱신 정책은 `DEP-01`에서 확정했다. 이후 작업은 `DATA-02`, `SCALE-01`로 관리한다.
 
 ## 품질 기록 위치
 

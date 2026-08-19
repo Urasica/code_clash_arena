@@ -200,3 +200,23 @@
 - 임시 조치: 오류 query나 provider 예외 상세를 사용자에게 노출하지 않고 안정적인 `OAUTH_FAILED` 안내를 유지했다.
 - 근본 해결: logout·OAuth smoke를 한 탭에서 직렬 실행하고, 운영에서도 다른 탭의 로그인 시도가 겹친 경우 단일 탭에서 재시도하도록 안내한다. 보안을 위해 logout과 callback 뒤의 임시 session 무효화는 완화하지 않는다.
 - 검증 결과: 단일 흐름으로 같은 Google 계정에 재로그인하자 성공했고, DB의 Google 사용자 수와 내부 ID가 각각 1건과 17로 유지됐다.
+
+## TS-021 CRA lockfile을 유지한 Vite 설치가 peer dependency 충돌
+
+- 상태: 해결
+- 현상: CRA 의존성을 제거하고 Vite/Vitest를 추가한 첫 `npm install`이 이전 `node_modules`와 lockfile의 Jest·Testing Library peer 관계를 계속 해석하다 실패했다.
+- 재현 조건: `react-scripts`를 manifest에서 제거했지만 CRA가 만든 `node_modules`와 `package-lock.json`을 둔 상태로 새 build/test 도구를 설치한다.
+- 원인: 도구 체인 자체를 교체하는데 이전 해석 결과를 입력으로 재사용해 서로 다른 test 생태계의 peer 제약이 한 트리에 남았다.
+- 임시 조치: 생성물인 `frontend/node_modules`만 정확한 경로를 확인한 뒤 제거했다.
+- 근본 해결: manifest를 Vite/Vitest direct dependency로 확정하고 기존 lockfile을 새로 생성했다. 이후 설치는 lockfile을 변경하지 않는 `npm ci`만 사용한다.
+- 검증 결과: clean `npm ci`가 160 package를 재현했고 전체 audit 0건, 프론트 6건과 production build가 통과했다.
+
+## TS-022 Vite 8이 `.js` JSX를 해석하지 않고 Vitest가 E2E를 수집
+
+- 상태: 해결
+- 현상: 첫 Vite build가 `src/index.js`의 JSX에서 실패했고 Vitest는 `frontend/e2e/ai-match.spec.js`까지 읽어 Playwright의 `test()`를 잘못된 runner에서 실행했다.
+- 재현 조건: CRA에서 사용하던 `.js` JSX 파일과 전체 기본 test 탐색 범위를 그대로 둔 채 Vite 8/Vitest 4를 실행한다.
+- 원인: Vite 8의 변환 경계는 JSX 확장자를 명시하는 현재 도구 규칙을 따르며, 단위 test와 E2E 파일이 같은 frontend tree에 있어 기본 탐색 범위가 겹쳤다.
+- 임시 조치: deprecated esbuild loader override로 `.js` 전체를 JSX로 취급하려 했지만 Vite 8의 Oxc/Rolldown 경로에는 적용되지 않아 제거했다.
+- 근본 해결: 실제 JSX를 가진 화면·entry·컴포넌트 test를 `.jsx`로 바꾸고 Vitest include를 `src/**/*.test.{js,jsx}`로 제한했다. E2E는 Playwright만 소유한다.
+- 검증 결과: Vitest 2 suite/6 test와 Vite production build가 통과하고 E2E spec은 단위 test에서 수집되지 않는다.

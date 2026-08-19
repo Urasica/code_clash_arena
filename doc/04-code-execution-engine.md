@@ -52,6 +52,8 @@ AI run은 p1 사용자 코드와 p2 Python AI를 쓴다. PvP run은 두 runner�
 
 기본 이미지: `ENGINE_IMAGE=code-battle-engine`.
 
+이미지는 Ubuntu 24.04를 기반으로 Python 3.12 계열, OpenJDK 21, GCC/G++ 13 계열을 설치하고 Node 24.18.0 binary를 명시적으로 가져온다. JavaScript와 Java runner의 지원 버전은 프론트/백엔드 CI와 같은 Node 24·Java 21 기준이며, 이미지 변경은 다섯 언어 compile/run 계약을 모두 통과해야 한다.
+
 | 제한 | 값 |
 | --- | --- |
 | network | `none` |

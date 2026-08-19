@@ -128,6 +128,7 @@ readiness에 포함되는 DB·Redis 검사가 네트워크 단절 상태에서 �
 ## DB migration과 업그레이드
 
 - MySQL migration은 `db/migration/mysql`, 테스트용 H2 migration은 `db/migration/h2`에 분리한다.
+- MySQL 8.4와 Flyway 11.20.3 조합을 지원 기준으로 고정하며 실제 MySQL smoke에서 migrate와 validate를 모두 실행한다.
 - 빈 MySQL에는 Flyway V1이 네 domain table, FK, unique, 조회 index를 만든다.
 - 기존 Hibernate 관리 schema는 `baseline-version=0`으로 등록한 뒤 같은 V1을 실행한다. V1은 기존 table을 보존하면서 누락된 index와 unique 제약을 추가하고 null map/code/language를 명시적인 legacy 값으로 보정한다.
 - V2는 `users(provider, provider_id)`에 `uk_users_provider_identity` unique 제약을 추가해 동일 Google `sub`의 중복 계정 생성을 막는다. H2 테스트 migration도 같은 계약을 적용한다.

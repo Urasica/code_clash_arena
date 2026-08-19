@@ -28,7 +28,7 @@ code_clash_arena/
 ├─ frontend/src/
 │  ├─ features/           인증·Land Grab 기능 API와 결과 정책
 │  ├─ shared/             HTTP, 런타임 설정, STOMP 공통 코드
-│  └─ *.js                페이지와 화면 조합
+│  └─ *.jsx               페이지와 화면 조합
 ├─ backend/code/src/main/java/com/battle/code/
 │  ├─ controller/         REST·STOMP 진입점
 │  ├─ service/            인증·매칭·게임 오케스트레이션
@@ -55,8 +55,8 @@ code_clash_arena/
 
 ### 요구 사항
 
-- Java 17 이상
-- Node.js 20 이상과 npm
+- Java 21 (Maven Wrapper가 Java 21~25, Maven 3.9.x를 강제)
+- Node.js 22.22.2 이상 또는 24.15 이상 24.x와 npm 10~11
 - Python 3.10 이상
 - Docker Desktop 또는 호환 Docker daemon
 
@@ -98,7 +98,7 @@ npm.cmd ci
 npm.cmd start
 ```
 
-기본 주소는 `http://localhost:3000`입니다. 다른 백엔드를 사용하면 `REACT_APP_API_BASE_URL`을 변경합니다.
+기본 주소는 `http://localhost:3000`입니다. 다른 백엔드를 사용하면 `VITE_API_BASE_URL`을 변경합니다.
 
 Google 로그인은 선택 사항입니다. 사용하려면 Spring 표준 환경 변수 `SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_ID`, `..._CLIENT_SECRET`, `..._SCOPE`를 설정하고 Google 콘솔에 `http://localhost:8080/login/oauth2/code/google`을 리다이렉트 URI로 등록합니다. scope 기본 계약은 `openid,profile,email`입니다. 설정하지 않아도 로컬·게스트 로그인과 서버 기동은 동작합니다.
 
@@ -109,6 +109,7 @@ Google 로그인은 선택 사항입니다. 사용하려면 Spring 표준 환경
 Set-Location frontend
 npm.cmd test -- --watchAll=false
 npm.cmd run build
+npm.cmd run audit
 
 # 백엔드
 Set-Location ../backend/code
@@ -148,13 +149,13 @@ npm.cmd run test:e2e
 | `ENGINE_WORKSPACE` | `temp` | 매치별 임시 작업공간 루트 |
 | `ENGINE_READINESS_TIMEOUT` | `3s` | Docker와 engine image readiness 검사 제한 시간 |
 | `MANAGEMENT_PORT` | `8081` | health·Prometheus 내부 endpoint 포트 |
-| `REACT_APP_API_BASE_URL` | `http://localhost:8080` | 프론트 REST·SockJS 기준 주소 |
+| `VITE_API_BASE_URL` | `http://localhost:8080` | 프론트 REST·SockJS 기준 주소 |
 | `SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_ID` | 없음 | Google OAuth Client ID. 실제 값은 `.env` 또는 secret store에만 저장 |
 | `SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_SECRET` | 없음 | Google OAuth Client Secret. 실제 값은 `.env` 또는 secret store에만 저장 |
 | `SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_SCOPE` | `openid,profile,email` | Google OAuth/OIDC 요청 scope |
 
 - 백엔드는 Docker CLI를 직접 호출합니다. Docker socket을 외부에 노출하거나 백엔드 컨테이너에 무제한으로 마운트하지 마세요.
-- Flyway가 vendor별 V1·V2를 적용하고 Hibernate는 항상 `ddl-auto=validate`로 schema를 검사합니다. V2는 Google provider identity unique 제약을 추가하므로 운영 배포 전 `(provider, provider_id)` 중복 점검, DB backup, migration 권한 확인이 필요합니다. 적용된 migration 파일은 수정하지 마세요.
+- Flyway 11.20.3이 MySQL 8.4에 vendor별 V1·V2를 적용하고 Hibernate는 항상 `ddl-auto=validate`로 schema를 검사합니다. V2는 Google provider identity unique 제약을 추가하므로 운영 배포 전 `(provider, provider_id)` 중복 점검, DB backup, migration 권한 확인이 필요합니다. 적용된 migration 파일은 수정하지 마세요.
 - 브라우저 밖에서 `/api/**` 상태 변경 요청을 보내는 운영 도구도 `FRONTEND_URL`과 같은 `Origin` header를 보내야 합니다.
 - 엔진 컨테이너는 네트워크 없음, 0.5 CPU, 512 MiB, PID 128, 읽기 전용 rootfs로 실행됩니다. 정책 변경 시 실행기 테스트와 운영 문서를 함께 갱신하세요.
 - Redis 매치 데이터는 30분, WebSocket 세션은 2시간 TTL을 사용합니다. 예상 최대 대전 시간과 장애 복구 정책에 맞춰 함께 조정해야 합니다.
