@@ -1,15 +1,16 @@
 import { render, screen } from '@testing-library/react';
+import { vi } from 'vitest';
 import App from './App';
 import { getSession } from './features/auth/authApi';
 
-jest.mock('./features/auth/authApi', () => ({
-  getSession: jest.fn(),
-  logout: jest.fn(),
+vi.mock('./features/auth/authApi', () => ({
+  getSession: vi.fn(),
+  logout: vi.fn(),
 }));
 
 beforeEach(() => {
   localStorage.clear();
-  jest.clearAllMocks();
+  vi.clearAllMocks();
   window.history.replaceState({}, '', '/');
 });
 

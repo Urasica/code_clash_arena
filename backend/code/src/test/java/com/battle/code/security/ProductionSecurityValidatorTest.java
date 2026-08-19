@@ -1,5 +1,6 @@
 package com.battle.code.security;
 
+import com.battle.code.data.SensitiveDataProperties;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -13,7 +14,7 @@ class ProductionSecurityValidatorTest {
         AuthCookieProperties cookie = new AuthCookieProperties();
 
         assertThatThrownBy(() -> new ProductionSecurityValidator(
-                jwt, cookie, "http://localhost:3000"
+                jwt, cookie, new SensitiveDataProperties(), "http://localhost:3000"
         ).afterPropertiesSet()).isInstanceOf(IllegalStateException.class);
     }
 
@@ -24,9 +25,13 @@ class ProductionSecurityValidatorTest {
         AuthCookieProperties cookie = new AuthCookieProperties();
         cookie.setSecure(true);
         cookie.setSameSite("Lax");
+        SensitiveDataProperties sensitiveData = new SensitiveDataProperties();
+        sensitiveData.setEncryptionActiveKey(
+                "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+        );
 
         assertThatCode(() -> new ProductionSecurityValidator(
-                jwt, cookie, "https://arena.example.com"
+                jwt, cookie, sensitiveData, "https://arena.example.com"
         ).afterPropertiesSet()).doesNotThrowAnyException();
     }
 }

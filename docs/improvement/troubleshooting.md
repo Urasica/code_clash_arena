@@ -200,3 +200,63 @@
 - 임시 조치: 오류 query나 provider 예외 상세를 사용자에게 노출하지 않고 안정적인 `OAUTH_FAILED` 안내를 유지했다.
 - 근본 해결: logout·OAuth smoke를 한 탭에서 직렬 실행하고, 운영에서도 다른 탭의 로그인 시도가 겹친 경우 단일 탭에서 재시도하도록 안내한다. 보안을 위해 logout과 callback 뒤의 임시 session 무효화는 완화하지 않는다.
 - 검증 결과: 단일 흐름으로 같은 Google 계정에 재로그인하자 성공했고, DB의 Google 사용자 수와 내부 ID가 각각 1건과 17로 유지됐다.
+
+## TS-021 CRA lockfile을 유지한 Vite 설치가 peer dependency 충돌
+
+- 상태: 해결
+- 현상: CRA 의존성을 제거하고 Vite/Vitest를 추가한 첫 `npm install`이 이전 `node_modules`와 lockfile의 Jest·Testing Library peer 관계를 계속 해석하다 실패했다.
+- 재현 조건: `react-scripts`를 manifest에서 제거했지만 CRA가 만든 `node_modules`와 `package-lock.json`을 둔 상태로 새 build/test 도구를 설치한다.
+- 원인: 도구 체인 자체를 교체하는데 이전 해석 결과를 입력으로 재사용해 서로 다른 test 생태계의 peer 제약이 한 트리에 남았다.
+- 임시 조치: 생성물인 `frontend/node_modules`만 정확한 경로를 확인한 뒤 제거했다.
+- 근본 해결: manifest를 Vite/Vitest direct dependency로 확정하고 기존 lockfile을 새로 생성했다. 이후 설치는 lockfile을 변경하지 않는 `npm ci`만 사용한다.
+- 검증 결과: clean `npm ci`가 160 package를 재현했고 전체 audit 0건, 프론트 6건과 production build가 통과했다.
+
+## TS-022 Vite 8이 `.js` JSX를 해석하지 않고 Vitest가 E2E를 수집
+
+- 상태: 해결
+- 현상: 첫 Vite build가 `src/index.js`의 JSX에서 실패했고 Vitest는 `frontend/e2e/ai-match.spec.js`까지 읽어 Playwright의 `test()`를 잘못된 runner에서 실행했다.
+- 재현 조건: CRA에서 사용하던 `.js` JSX 파일과 전체 기본 test 탐색 범위를 그대로 둔 채 Vite 8/Vitest 4를 실행한다.
+- 원인: Vite 8의 변환 경계는 JSX 확장자를 명시하는 현재 도구 규칙을 따르며, 단위 test와 E2E 파일이 같은 frontend tree에 있어 기본 탐색 범위가 겹쳤다.
+- 임시 조치: deprecated esbuild loader override로 `.js` 전체를 JSX로 취급하려 했지만 Vite 8의 Oxc/Rolldown 경로에는 적용되지 않아 제거했다.
+- 근본 해결: 실제 JSX를 가진 화면·entry·컴포넌트 test를 `.jsx`로 바꾸고 Vitest include를 `src/**/*.test.{js,jsx}`로 제한했다. E2E는 Playwright만 소유한다.
+- 검증 결과: Vitest 2 suite/6 test와 Vite production build가 통과하고 E2E spec은 단위 test에서 수집되지 않는다.
+
+## TS-023 MySQL 복합 인덱스를 두 개로 계산
+
+- 상태: 해결
+- 현상: Flyway V3와 민감 데이터 기능은 정상 동작하지만 실제 인프라 smoke가 감사 인덱스 2개를 기대한 assertion에서 실제 값 3으로 실패했다.
+- 재현 조건: `information_schema.statistics`에서 `idx_sensitive_audit_occurred_at`과 `(match_uuid, occurred_at)` 복합 인덱스를 `COUNT(*)`로 센다.
+- 원인: MySQL은 `statistics`에 인덱스 하나당 한 행이 아니라 인덱스 column마다 한 행을 제공한다. 단일 column 인덱스 1행과 복합 인덱스 2행이 합쳐져 3이 됐다.
+- 임시 조치: 기대값을 3으로 바꾸지 않았다. 이는 인덱스 개수가 아니라 현재 column 구성에 테스트를 결합한다.
+- 근본 해결: `COUNT(DISTINCT index_name)`으로 실제 인덱스 이름 수를 검사한다.
+- 검증 결과: 같은 MySQL 8.4 Testcontainers 환경에서 V1→V3 migrate/validate와 실제 인프라 6건이 모두 통과했다.
+
+## TS-024 Vite 전환 후 CRA test 옵션 잔존
+
+- 상태: 해결
+- 현상: PR Gate의 Ubuntu·Windows 프론트 단위 테스트가 모두 `Unknown option --watchAll`로 즉시 종료했다. 같은 옵션이 남아 있던 README 명령도 실패했다.
+- 재현 조건: Vite/Vitest 전환 뒤 `npm.cmd test -- --watchAll=false`를 실행한다.
+- 원인: `--watchAll=false`는 CRA/Jest 실행 방식에서 사용하던 옵션이고 현재 `test` script는 이미 one-shot인 `vitest run`이다. DEP-01에서 package script는 바뀌었지만 PR workflow와 현재 실행 문서가 이전 명령을 유지했다.
+- 임시 조치: 임의의 Vitest 호환 옵션으로 치환하지 않았다.
+- 근본 해결: PR Gate는 `npm test`, 현재 README와 테스트 설계 문서는 `npm.cmd test`로 통일했다. 과거 기준선·완료 기록의 당시 CRA 명령은 역사적 사실이라 유지했다.
+- 검증 결과: Vitest 2 suite/6 test와 Vite production build가 통과했다.
+
+## TS-025 Vite production bundle에서 SockJS의 `global` 미정의
+
+- 상태: 해결
+- 현상: Release Gate의 Chromium 화면이 배경만 표시한 채 첫 제목을 렌더링하지 못했다. Playwright trace의 page error는 `ReferenceError: global is not defined`였다.
+- 재현 조건: `sockjs-client`를 포함한 Vite production build를 브라우저에서 실행한다.
+- 원인: SockJS의 CommonJS 브라우저 모듈 일부가 Node 방식의 `global`을 참조한다. CRA가 제공하던 암묵적 호환 처리는 Vite production bundle에 없다.
+- 임시 조치: 애플리케이션 entry에서 전역 변수를 직접 생성하거나 SockJS 코드를 수정하지 않았다.
+- 근본 해결: Vite의 `define`에서 `global`을 표준 브라우저 전역인 `globalThis`로 치환했다. E2E는 첫 화면의 `pageerror`를 수집해 렌더링 대기 시간 초과보다 직접적인 원인을 보고한다.
+- 검증 결과: production build를 제공한 Chromium에서 초기 렌더링, 게스트 로그인, AI 전투 완료까지 통과했다.
+
+## TS-026 Windows에서 Playwright 사전 build가 `spawnSync npm.cmd EINVAL`
+
+- 상태: 해결
+- 현상: Windows 로컬 `npm.cmd run test:e2e`가 브라우저를 열기 전에 `spawnSync npm.cmd EINVAL`로 종료했다.
+- 재현 조건: Playwright global setup이 Node `spawnSync`로 `npm.cmd run build`를 직접 실행한다.
+- 원인: Windows의 `.cmd` shim을 `shell` 없이 직접 생성하는 방식은 Node 실행 환경에 따라 지원되지 않는다.
+- 임시 조치: `shell: true`나 문자열 command 조합은 사용하지 않았다.
+- 근본 해결: npm이 제공한 `npm_execpath`를 현재 Node 실행 파일로 호출해 같은 npm CLI를 운영체제와 무관하게 재사용한다.
+- 검증 결과: Windows에서 E2E 사전 production build와 Chromium 게스트 AI 흐름 1건이 통과했다.

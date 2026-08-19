@@ -1,17 +1,17 @@
 # M2 — 관측 가능하고 회귀에 강한 운영
 
-- 상태: IN_PROGRESS
+- 상태: DONE
 - 선행: M1 DONE
 - 시작일: 2026-08-17
-- 작업 브랜치: `codex/m2-auth-01`
+- 작업 브랜치: `codex/m2-dep-data`
 
 | ID | 상태 | 작업 | 완료 조건 |
 | --- | --- | --- | --- |
 | OPS-01 | DONE | 구조화 로그, correlation ID, queue/engine/DB metric, readiness·alert | match ID로 전 구간 추적하고 적체·timeout·cleanup·저장 실패 경보 확인 |
 | TEST-01 | DONE | Testcontainers, Playwright, failure injection, Windows/Linux CI | PR 빠른 gate와 release 실제 인프라·브라우저·5언어 gate |
 | AUTH-01 | DONE | 실제 Google OAuth claim·충돌·취소·logout 정책 | 운영 credential smoke와 예측 가능한 오류/계정 연결 |
-| DATA-02 | READY | 제출 코드·replay 보존, 삭제, 암호화, 감사 | 자동 만료·삭제와 접근 감사, DB 성장 상한 |
-| DEP-01 | READY | MySQL·Flyway·JDK·Node 지원 버전 정렬과 의존성 갱신 정책 | 지원 경고 없이 호환 행렬·lockfile·정기 갱신 gate 통과 |
+| DATA-02 | DONE | 제출 코드·replay 보존, 삭제, 암호화, 감사 | 자동 만료·삭제와 접근 감사, DB 성장 상한 |
+| DEP-01 | DONE | MySQL·Flyway·JDK·Node 지원 버전 정렬과 의존성 갱신 정책 | 지원 경고 없이 호환 행렬·lockfile·정기 갱신 gate 통과 |
 
 ## OPS-01 완료 기록
 
@@ -72,10 +72,34 @@
 - 운영 기준: 실제 운영 JWT secret은 배포 secret store에서 주입한다. 여러 탭에서 logout과 OAuth callback이 겹치면 이전 임시 session/state가 무효화되어 `OAUTH_FAILED`가 될 수 있으므로 단일 흐름으로 재시도한다.
 - 완료 커밋: `bdc66d5` (`feat(auth): harden Google OAuth account flow`)
 
-## 다음 작업
+## DEP-01 완료 기록
 
-AUTH-01 변경을 commit/push하고 PR Gate와 branch ref Release Gate를 통과시킨다. 이후 `DATA-02` 또는 `DEP-01`을 시작한다.
+- 근거: MySQL 8.4 실행 시 이전 Flyway가 공식 지원 경고를 냈고 CRA 5 전이 트리의 lockfile audit은 낮음 11, 보통 15, 높음 27, 심각 2로 총 55건이었다. Node 20도 2026-03-24에 지원이 끝나 현재 CI 기준으로 유지할 수 없었다.
+- 구현: Spring Boot 3.5.16·Java 21·Flyway 11.20.3·JJWT 0.13.0으로 정렬하고 Maven 3.9/Java 21~25 enforcer를 추가했다. CI와 engine은 Node 24·Java 21로 맞췄다.
+- 프론트: CRA/react-scripts를 Vite 8·Vitest 4로 교체하고 JSX 확장자와 E2E 수집 경계를 명시했다. 새 npm lockfile은 160 package를 재현하며 전체 audit 0건이다.
+- 갱신 정책: Maven, npm, Actions, root/engine Docker에 월요일 주간 Dependabot을 설정했다. minor/patch는 생태계별로 묶고 major는 별도 검토하며 모든 PR은 Windows/Linux PR Gate를 통과해야 한다.
+- 예외: Monaco 0.56이 취약한 DOMPurify 3.4.8을 정확히 고정하므로 npm override로 3.4.13을 사용한다. Monaco가 수정 버전을 직접 채택하면 override 제거를 먼저 검토한다.
+- 검증: 새 lockfile `npm ci`, 프론트 6건·Vite production build·전체 npm audit 0건, 백엔드 82건 중 77 pass/통합 5 skip, MySQL 8.4·Redis·장애 주입 실제 통합 5건, engine 8건/5언어가 모두 통과했다. Flyway migrate/validate에서 지원 경고가 출력되지 않았다.
+- 현재 설계: [`../doc/08-dependency-build.md`](../doc/08-dependency-build.md)
+- 구현 커밋: `6fb3a2e` (`chore(dep): align supported toolchains`)
 
-`DEP-01` 입력 기준으로 현재 MySQL 8.4 실행 시 Flyway 공식 지원 경고가 남고, `npm install` 기준 lockfile audit은 55건(낮음 11, 보통 15, 높음 27, 심각 2)을 보고한다. 자동 수정은 동작 변경 가능성이 있어 TEST-01에서 적용하지 않으며 지원 버전 정렬과 함께 별도 검증한다.
+## DATA-02 완료 기록
 
-M2 완료 시 장애를 재현하지 않고도 상태와 원인을 metric·log·trace에서 찾을 수 있어야 한다.
+- 근거: 제출 코드와 replay가 평문으로 무기한 보존됐고, 사용자 삭제 경로·접근 감사·장기 DB 상한이 없었다.
+- 암호화: 저장 전에 match/player AAD를 묶은 AES-256-GCM envelope로 변환한다. `prod` profile은 개발 기본 키를 거부하고 active/previous key ID로 안전한 순차 교체를 지원한다.
+- 보존: 제출 코드 7일, replay 30일, 최신 1,000 match를 기본 상한으로 두고 10분 간격·500개 batch로 payload만 제거한다. 감사 로그는 365일과 100,000행 상한을 함께 적용한다.
+- 삭제: 인증 참가자가 `DELETE /api/match/{matchId}/sensitive-data`로 본인 코드와 공유 replay를 즉시 삭제할 수 있다. match 결과·점수·언어·참가자 metadata는 유지한다.
+- 전환·감사: Flyway V3가 삭제 시각과 감사 table/index를 추가한다. 기동 batch가 기존 평문을 암호화하고 모든 서비스 복호화는 actor/outcome/reason 감사를 남긴다.
+- 검증:
+  - DATA 관련 단위·schema·보안 계약 22건 통과.
+  - 백엔드 전체 빠른 회귀 96건 중 90 pass, 실제 인프라 6 skip.
+  - Testcontainers MySQL 8.4·Redis·Toxiproxy와 실제 engine을 사용하는 통합 6건 통과. V3 migrate/validate, 원문 비노출, 평문 재암호화, 접근 감사, 참가자 삭제를 확인했다.
+  - DEP-01에서 프론트 6건·Vite build·npm audit 0건과 engine 8건/5언어를 함께 확인했다.
+- 현재 설계: [`../doc/09-sensitive-data-lifecycle.md`](../doc/09-sensitive-data-lifecycle.md)
+- 구현 커밋: `57d02e5` (`feat(data): protect sensitive match payloads`)
+- 테스트 커밋: `6172a1d` (`test(data): cover sensitive payload size limits`)
+- 원격 PR/Release Gate 결과는 사용자 운영 절차에 따라 별도로 확인하며 이 문서에서 반복 조회하지 않는다.
+
+## 완료 판정
+
+OPS-01, TEST-01, AUTH-01, DEP-01, DATA-02의 구현·로컬 자동 검증·현재 설계 문서가 모두 완료되어 M2를 종료한다. 다음 작업은 M3의 기능 단위 유지보수 구조이며, M4의 배포 공급망·용량 측정은 M3 이후 진행한다.

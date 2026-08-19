@@ -52,6 +52,8 @@ AI run은 p1 사용자 코드와 p2 Python AI를 쓴다. PvP run은 두 runner�
 
 기본 이미지: `ENGINE_IMAGE=code-battle-engine`.
 
+이미지는 Ubuntu 24.04를 기반으로 Python 3.12 계열, OpenJDK 21, GCC/G++ 13 계열을 설치하고 Node 24.18.0 binary를 명시적으로 가져온다. JavaScript와 Java runner의 지원 버전은 프론트/백엔드 CI와 같은 Node 24·Java 21 기준이며, 이미지 변경은 다섯 언어 compile/run 계약을 모두 통과해야 한다.
+
 | 제한 | 값 |
 | --- | --- |
 | network | `none` |
@@ -126,8 +128,8 @@ turn snapshot은 action, position, alive, coins, walls, board, scores, board_siz
 - 자원·timeout 값 일부가 코드 상수이고 match 결과에 engine image digest/policy version이 없다.
 - 심판과 플레이어는 같은 container PID namespace를 사용하므로 커널 수준의 완전한 container 분리는 아니며, UID·파일 mode·capability 경계로 상호 접근을 차단한다.
 - Redis가 장시간 중단되면 새 AI workspace lease를 만들 수 없으므로 `/start`도 실패하고 생성한 폴더를 되돌린다.
-- 사용자 코드와 replay의 보존/감사 정책이 실행 계층과 연결되어 있지 않다.
+- 실행 중 사용자 코드는 match workspace의 파일로 존재하고 종료·TTL 정리 시 삭제된다. DB로 영속화되는 code/replay는 저장 경계에서 암호화되지만 workspace 자체는 별도 저장 암호화를 사용하지 않는다.
 - container 생성 비용과 동시 실행 capacity가 측정되지 않았다.
 - engine 자체는 JSON 프로세스 계약이지만 백엔드 경계에서 명시적 DTO와 직렬화 계약 테스트로 검증한다.
 
-후속 작업은 `EXEC-01`, `EXEC-02`, `EXEC-03`, `BE-01`, `DATA-02`, `SCALE-01`로 관리한다.
+후속 작업은 M3 `EXEC-01`, `BE-01`과 M4 `SCALE-01`로 관리한다. DB 민감 payload 정책은 [민감 데이터 수명 설계](09-sensitive-data-lifecycle.md)를 따른다.

@@ -4,7 +4,7 @@
 
 - 현재 코드의 역할별 설계: [`../doc/README.md`](../doc/README.md)
 - 아직 구현하지 않은 작업: [`../roadmap/README.md`](../roadmap/README.md)
-- 1·2단계와 M1 개선 기록: [`improvement/README.md`](improvement/README.md)
+- 1·2단계와 M1·M2 개선 기록: [`improvement/README.md`](improvement/README.md)
 
 ## 문서 배치 원칙
 

@@ -1,4 +1,4 @@
-const configuredApiBaseUrl = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8080';
+const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
 
 export const API_BASE_URL = configuredApiBaseUrl.replace(/\/$/, '');
 

@@ -2,8 +2,15 @@ package com.battle.code.service;
 
 import com.battle.code.domain.GameMatch;
 import com.battle.code.domain.User;
+import com.battle.code.data.SensitiveDataAuditService;
+import com.battle.code.data.SensitiveDataProperties;
+import com.battle.code.data.SensitiveDataService;
+import com.battle.code.data.SensitivePayloadCipher;
 import com.battle.code.dto.MatchExecutionResultDto;
+import com.battle.code.observability.MatchTelemetry;
 import com.battle.code.repository.GameMatchRepository;
+import com.battle.code.repository.MatchPlayerRepository;
+import com.battle.code.repository.MatchReplayRepository;
 import com.battle.code.repository.UserRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,7 +39,22 @@ class MatchServiceTest {
     void setUp() {
         matchRepository = mock(GameMatchRepository.class);
         userRepository = mock(UserRepository.class);
-        service = new MatchService(matchRepository, userRepository, new ObjectMapper());
+        SensitiveDataProperties properties = new SensitiveDataProperties();
+        SensitiveDataService sensitiveDataService = new SensitiveDataService(
+                new SensitivePayloadCipher(properties),
+                properties,
+                mock(SensitiveDataAuditService.class),
+                matchRepository,
+                mock(MatchPlayerRepository.class),
+                mock(MatchReplayRepository.class)
+        );
+        service = new MatchService(
+                matchRepository,
+                userRepository,
+                new ObjectMapper(),
+                MatchTelemetry.noOp(),
+                sensitiveDataService
+        );
     }
 
     @Test
@@ -51,7 +73,12 @@ class MatchServiceTest {
         GameMatch saved = captor.getValue();
         assertThat(saved.getMapData()).isEqualTo("{\"walls\":[],\"coins\":[]}");
         assertThat(saved.getPlayers()).hasSize(2);
+        assertThat(saved.getPlayers())
+                .allSatisfy(player -> assertThat(player.getSubmittedCode())
+                        .startsWith("cca:v1:")
+                        .doesNotContain("code"));
         assertThat(saved.getReplay()).isNotNull();
+        assertThat(saved.getReplay().getFullLog()).startsWith("cca:v1:");
         assertThat(saved.getReplay().getGameMatch()).isSameAs(saved);
     }
 

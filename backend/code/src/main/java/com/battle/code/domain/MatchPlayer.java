@@ -3,6 +3,8 @@ package com.battle.code.domain;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.time.LocalDateTime;
+
 @Entity
 @Table(
         name = "match_player",
@@ -38,8 +40,10 @@ public class MatchPlayer {
     @Column(nullable = false)
     private Integer score;
 
-    @Column(nullable = false, columnDefinition = "TEXT")
-    private String submittedCode; // 유저가 제출한 코드
+    @Column(columnDefinition = "LONGTEXT")
+    private String submittedCode; // AES-GCM envelope. 만료·삭제 후 null
+
+    private LocalDateTime submittedCodePurgedAt;
 
     @Column(nullable = false)
     private String language; // "python", "java" 등

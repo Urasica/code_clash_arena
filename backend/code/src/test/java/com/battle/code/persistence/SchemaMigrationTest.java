@@ -20,15 +20,16 @@ class SchemaMigrationTest {
     private JdbcTemplate jdbcTemplate;
 
     @Test
-    void migrationsCreateTheCompleteSchemaAndOAuthIdentityConstraint() {
-        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("2");
+    void migrationsCreateTheCompleteSchemaAndSensitiveDataLifecycle() {
+        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("3");
         Integer domainTableCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM information_schema.tables " +
                         "WHERE table_schema = 'public' " +
-                        "AND table_name IN ('users', 'game_match', 'match_player', 'match_replay')",
+                        "AND table_name IN (" +
+                        "'users', 'game_match', 'match_player', 'match_replay', 'sensitive_data_audit')",
                 Integer.class
         );
-        assertThat(domainTableCount).isEqualTo(4);
+        assertThat(domainTableCount).isEqualTo(5);
 
         Integer oauthIdentityConstraintCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM information_schema.table_constraints " +
@@ -39,5 +40,14 @@ class SchemaMigrationTest {
                 Integer.class
         );
         assertThat(oauthIdentityConstraintCount).isEqualTo(1);
+
+        Integer purgeColumnCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.columns " +
+                        "WHERE table_schema = 'public' " +
+                        "AND table_name = 'match_player' " +
+                        "AND column_name = 'submitted_code_purged_at'",
+                Integer.class
+        );
+        assertThat(purgeColumnCount).isEqualTo(1);
     }
 }

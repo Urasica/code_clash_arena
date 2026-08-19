@@ -8,22 +8,23 @@
 
 | 계층 | 위치 | 현재 수 | 주요 보장 |
 | --- | --- | --- | --- |
-| 프론트 단위/컴포넌트 | `frontend/src/**/*.test.js` | 6 tests | 익명/세션 복원, OAuth 취소 안내·query 정리, token localStorage 부재, AI/draw/disconnect 결과 표시 정책 |
+| 프론트 단위/컴포넌트 | `frontend/src/**/*.test.{js,jsx}` | 6 tests | Vitest/jsdom, 익명/세션 복원, OAuth 취소 안내·query 정리, token localStorage 부재, AI/draw/disconnect 결과 표시 정책 |
 | 프론트 브라우저 | `frontend/e2e` | 1 test | production build, 게스트 인증, 로비·난이도, 맵 생성, Python compile/run, 결과 overlay |
-| 백엔드 빠른 회귀 | `backend/code/src/test/java` | 77 pass | Flyway/H2 V1·V2, DTO·오류·보안 계약, JWT/cookie/logout, Google claim·계정·취소·충돌, Redis Lua 상태·매칭, workspace, 저장 aggregate, correlation context·metric·health |
-| 실제 인프라 통합 | `backend/code/src/test/java/.../integration` | 5 tests | MySQL migration·Redis, 인증/AI 전체 흐름, 두 사용자 PvP 동시 제출·disconnect, readiness·Prometheus·correlation header, DB/Redis 장애·복구 |
+| 백엔드 빠른 회귀 | `backend/code/src/test/java` | 90 pass, 6 opt-in skip | Flyway/H2 V1·V2·V3, DTO·오류·보안 계약, JWT/cookie/logout, Google claim·계정·취소·충돌, Redis Lua 상태·매칭, workspace, 저장 aggregate, 민감 payload 암호화·삭제·batch 정리, correlation context·metric·health |
+| 실제 인프라 통합 | `backend/code/src/test/java/.../integration` | 6 tests | MySQL migration·Redis, 인증/AI 전체 흐름, 두 사용자 PvP 동시 제출·disconnect, readiness·Prometheus·correlation header, DB/Redis 장애·복구, 민감 payload 평문 비노출·legacy 전환·감사·삭제 |
 | 엔진 규칙 | `engine/tests/test_land_grab.py`, `test_referee.py` | 4 tests | turn timeout, 마지막 점수, 맵 속성, C compiler 분기 |
 | Docker 계약 | `engine/tests/test_runners_integration.py` | 4 tests | bind mount 쓰기 없는 init, 5개 언어 compile/run과 player 간·referee 접근 공격 차단 |
 
-엔진 전체 suite는 8개 test이며 Docker image가 없으면 계약 4개는 명시적으로 skip한다. 실제 인프라 백엔드 테스트 5개는 `cca.run.integration=true`일 때만 실행하며 MySQL·Redis·Toxiproxy는 Testcontainers가 격리된 임의 포트로 시작한다.
+엔진 전체 suite는 8개 test이며 Docker image가 없으면 계약 4개는 명시적으로 skip한다. 실제 인프라 백엔드 테스트 6개는 `cca.run.integration=true`일 때만 실행하며 MySQL·Redis·Toxiproxy는 Testcontainers가 격리된 임의 포트로 시작한다.
 
 ## 실행 명령
 
 ```powershell
 # frontend
 Set-Location frontend
-npm.cmd test -- --watchAll=false
+npm.cmd test
 npm.cmd run build
+npm.cmd run audit
 
 # backend
 Set-Location ../backend/code
@@ -31,7 +32,7 @@ Set-Location ../backend/code
 .\mvnw.cmd -DskipTests package
 
 # 실제 MySQL·Redis·Docker 통합 및 장애 주입
-.\mvnw.cmd "-Dcca.run.integration=true" "-Dtest=RealInfrastructureSmokeTest,ObservabilityIntegrationTest,DependencyFailureInjectionTest,FullStackAiFlowTest,FullStackPvpFlowTest" test
+.\mvnw.cmd "-Dcca.run.integration=true" "-Dtest=RealInfrastructureSmokeTest,ObservabilityIntegrationTest,DependencyFailureInjectionTest,FullStackAiFlowTest,FullStackPvpFlowTest,SensitiveDataIntegrationTest" test
 
 # engine
 Set-Location ../..
@@ -64,25 +65,26 @@ npm.cmd run test:e2e
 
 ## 백엔드 테스트 격리
 
-`application-test.properties`는 H2 memory DB를 MySQL compatibility mode로 사용한다. Flyway H2 V1·V2를 적용한 뒤 Hibernate `validate`를 실행하며 scheduling은 꺼서 matcher가 빠른 테스트에 개입하지 않는다. OAuth2는 test client registration을 사용한다.
+`application-test.properties`는 H2 memory DB를 MySQL compatibility mode로 사용한다. Flyway H2 V1·V2·V3를 적용한 뒤 Hibernate `validate`를 실행하며 scheduling은 꺼서 matcher와 주기적 민감 데이터 정리가 빠른 테스트에 개입하지 않는다. OAuth2는 test client registration을 사용한다.
 
 빠른 service test는 Redis 연산을 mock한다. 실제 serialization·Lua·동시성은 opt-in 통합 테스트가 Testcontainers Redis를 사용해 보완한다. 통합 JVM은 MySQL 8.4, Redis 7.4, Toxiproxy를 한 번 시작하고 모든 애플리케이션 연결을 proxy로 통과시킨다. local Compose 데이터와 고정 포트를 사용하지 않으며 JVM 종료 시 Ryuk가 container와 network를 정리한다.
 
 ## 실제 인프라 통합 범위
 
-- `RealInfrastructureSmokeTest`: MySQL Flyway V1·V2/`validate`, 네 domain table, OAuth provider identity unique 제약, Redis PING.
+- `RealInfrastructureSmokeTest`: MySQL Flyway V1·V2·V3/`validate`, 다섯 domain/audit table, OAuth provider identity unique 제약, 민감 데이터 감사 index, Redis PING.
 - `FullStackAiFlowTest`: HTTP signup/login/me, 동일-origin cookie 요청, Docker init/compile/run, map·2 players·replay 저장, lease/workspace 정리, logout cookie 만료.
 - `FullStackPvpFlowTest`: 실제 Redis queue join/cancel/pair, 두 사용자의 동시 submit, engine/DB 정확히 1회, 두 탭 중 마지막 disconnect의 기권 저장, room/user/socket key 정리.
 - `ObservabilityIntegrationTest`: 실제 MySQL·Redis·Docker image readiness, Prometheus metric 노출, HTTP correlation ID echo.
 - `DependencyFailureInjectionTest`: DB와 Redis 연결을 각각 차단해 readiness 503/DOWN을 확인하고 연결 복원 뒤 200/UP 회복을 확인한다.
+- `SensitiveDataIntegrationTest`: MySQL 원문 비노출, 기존 평문 batch 암호화, 감사되는 복호화, 참가자 요청 삭제를 확인한다.
 - `ai-match.spec.js`: production build에서 게스트 로그인부터 AI 결과 overlay까지 사용자 경로를 검증한다.
 
 ## CI 게이트
 
 | workflow | 실행 조건 | 환경 | 범위 |
 | --- | --- | --- | --- |
-| `PR Gate` | pull request, main push | Ubuntu, Windows | backend 77건, frontend 6건·build, engine 규칙 4건 |
-| `Release Gate` | 수동 실행, `v*` tag push | Ubuntu | engine image·8건/5언어, Testcontainers 실제 통합 5건, package, Compose backend, Chromium E2E |
+| `PR Gate` | pull request, main push | Ubuntu, Windows | Java 21·Node 24, backend 90 pass/통합 6 skip, frontend 6건·Vite build·전체 의존성 audit, engine 규칙 4건 |
+| `Release Gate` | 수동 실행, `v*` tag push | Ubuntu | Java 21·Node 24, 의존성 audit, engine image·8건/5언어, Testcontainers 실제 통합 6건, package, Compose backend, Chromium E2E |
 
 Release 실패 시 backend log, Surefire report, Playwright report·trace·screenshot·video를 artifact로 보존한다. 두 workflow는 repository read 권한만 사용하며 배포나 외부 시스템 변경은 수행하지 않는다.
 
@@ -101,11 +103,12 @@ init test는 runner 소유 bind mount에 쓰지 않고 유효한 map JSON을 std
 | --- | --- |
 | frontend page/API/result | frontend tests + build |
 | auth/security/controller | backend 전체 test |
-| Redis/STOMP/session | backend test + 실제 인프라 통합 5종 |
+| Redis/STOMP/session | backend test + 실제 인프라 통합 6종 |
 | log/metric/readiness/alert | backend test + `ObservabilityIntegrationTest` + Prometheus rule 검토 |
 | runner/template/referee | engine 전체 + Docker 계약 |
 | Land Grab 규칙 | engine 규칙 + Docker 계약 |
 | schema/entity/persistence | backend test + `RealInfrastructureSmokeTest` + AI/PvP 통합 + 장애 주입 |
+| 제출 코드/replay/암호화 키 | backend test + `SensitiveDataIntegrationTest` + 운영 키·이전 키 설정 검토 |
 | 인증·로비·AI 화면 흐름 | frontend test + build + Playwright Chromium |
 | compose/설정/문서 | compose config + diff check + 문서 링크 검사 |
 
@@ -114,10 +117,10 @@ init test는 runner 소유 bind mount에 쓰지 않고 유효한 map JSON을 std
 - 두 실제 브라우저의 STOMP CONNECT/SUBSCRIBE/SEND와 화면 reconnect·replay E2E. 현재 Playwright는 AI HTTP 흐름만 보장한다.
 - 실제 Google 공급자 smoke는 수동으로 최초 성공·세션 복원·logout·동일 계정 재사용까지 확인했지만 CI에서는 실제 credential과 사용자 인증을 사용하지 않는다. 자동 gate는 claim·handler·계정 identity 계약까지만 보장한다.
 - Docker daemon/engine timeout 장애 주입과 저장 전달 보장(outbox/retry). DB/Redis readiness의 장애 감지·복구는 보장하지만 실패한 업무 요청의 재시도는 보장하지 않는다.
-- 부하, queue latency, container capacity, 장기 데이터 증가 측정.
-- MySQL 8.4와 현재 Flyway 조합은 실제 검증을 통과했지만 Flyway가 공식 지원 경고를 출력하므로 지원 버전 정렬이 필요하다.
+- 부하, queue latency, container capacity, 보존 정리 중 DB 부하 측정.
+- 장기 부하에서 lockfile과 base image 갱신이 성능·용량에 미치는 영향은 아직 측정하지 않았다.
 
-원격 Windows/Linux PR Gate와 release workflow는 M2 `TEST-01`에서 성공했고 실제 Google 공급자 smoke는 `AUTH-01`에서 완료했다. 이후 작업은 `DATA-02`, `DEP-01`, `SCALE-01`로 관리한다.
+원격 Windows/Linux PR Gate와 release workflow는 M2 `TEST-01`에서 성공했고 실제 Google 공급자 smoke는 `AUTH-01`에서 완료했다. 지원 버전·lockfile·정기 갱신 정책은 `DEP-01`, 민감 데이터 보존·삭제·암호화·감사는 `DATA-02`에서 확정했다. 이후 구조 작업은 M3, 용량 측정은 M4 `SCALE-01`로 관리한다.
 
 ## 품질 기록 위치
 

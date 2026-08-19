@@ -9,8 +9,8 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.stereotype.Component;
 import java.nio.charset.StandardCharsets;
-import java.security.Key;
 import java.util.Date;
+import javax.crypto.SecretKey;
 
 @Component
 @RequiredArgsConstructor
@@ -18,7 +18,7 @@ public class JwtTokenProvider {
     private final JwtProperties properties;
     private final UserDetailsService userDetailsService;
 
-    private Key signingKey() {
+    private SecretKey signingKey() {
         byte[] secret = properties.getSecret().getBytes(StandardCharsets.UTF_8);
         if (secret.length < 32) {
             throw new IllegalStateException("cca.jwt.secret must be at least 32 bytes.");
@@ -29,10 +29,10 @@ public class JwtTokenProvider {
     // 토큰 생성
     public String createToken(Long userId, String role) {
         return Jwts.builder()
-                .setSubject(String.valueOf(userId))
+                .subject(String.valueOf(userId))
                 .claim("role", role)
-                .setIssuedAt(new Date())
-                .setExpiration(new Date(System.currentTimeMillis() + properties.getExpiration().toMillis()))
+                .issuedAt(new Date())
+                .expiration(new Date(System.currentTimeMillis() + properties.getExpiration().toMillis()))
                 .signWith(signingKey())
                 .compact();
     }
@@ -40,7 +40,7 @@ public class JwtTokenProvider {
     // 토큰 검증 & ID 추출
     public boolean validateToken(String token) {
         try {
-            Jwts.parserBuilder().setSigningKey(signingKey()).build().parseClaimsJws(token);
+            Jwts.parser().verifyWith(signingKey()).build().parseSignedClaims(token);
             return true;
         } catch (Exception e) {
             return false;
@@ -48,8 +48,8 @@ public class JwtTokenProvider {
     }
 
     public Long getUserId(String token) {
-        return Long.parseLong(Jwts.parserBuilder().setSigningKey(signingKey()).build()
-                .parseClaimsJws(token).getBody().getSubject());
+        return Long.parseLong(Jwts.parser().verifyWith(signingKey()).build()
+                .parseSignedClaims(token).getPayload().getSubject());
     }
 
     public Authentication getAuthentication(String token) {
