@@ -7,7 +7,7 @@ module.exports = async (config) => {
 
   buildFrontend({
     ...process.env,
-    REACT_APP_API_BASE_URL: backendUrl,
+    VITE_API_BASE_URL: backendUrl,
   });
   const server = await startServer(port);
 

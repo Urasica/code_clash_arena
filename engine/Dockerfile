@@ -1,16 +1,19 @@
 # Dockerfile
-FROM ubuntu:22.04
+FROM node:24.18.0-bookworm-slim AS node-runtime
+
+FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
 # 유틸 및 언어별 컴파일러/런타임 설치
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
-    openjdk-17-jdk-headless \
+    openjdk-21-jdk-headless \
     build-essential \
-    nodejs \
     util-linux \
     && rm -rf /var/lib/apt/lists/*
+
+COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
 
 RUN groupadd --gid 10001 player1 \
     && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin player1 \

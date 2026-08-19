@@ -5,7 +5,6 @@ const { spawnSync } = require('child_process');
 
 const frontendRoot = path.resolve(__dirname, '..');
 const buildRoot = path.join(frontendRoot, 'build');
-const buildScript = require.resolve('react-scripts/scripts/build');
 
 const contentTypes = {
   '.css': 'text/css; charset=utf-8',
@@ -55,7 +54,8 @@ const createServer = () => http.createServer((request, response) => {
 });
 
 const buildFrontend = (environment = process.env) => {
-  const build = spawnSync(process.execPath, [buildScript], {
+  const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  const build = spawnSync(npmCommand, ['run', 'build'], {
     cwd: frontendRoot,
     env: environment,
     stdio: 'inherit',
