@@ -8,8 +8,8 @@
 
 | 계층 | 위치 | 현재 수 | 주요 보장 |
 | --- | --- | --- | --- |
-| 프론트 단위/컴포넌트 | `frontend/src/**/*.test.{js,jsx}` | 6 tests | Vitest/jsdom, 익명/세션 복원, OAuth 취소 안내·query 정리, token localStorage 부재, AI/draw/disconnect 결과 표시 정책 |
-| 프론트 브라우저 | `frontend/e2e` | 1 test | production build, 게스트 인증, 로비·난이도, 맵 생성, Python compile/run, 결과 overlay |
+| 프론트 단위/컴포넌트 | `frontend/src/**/*.test.{js,jsx}` | 18 tests | 인증·OAuth, 결과 표시, battle reducer, AI 조합 흐름, arena·matchmaking bounded reconnect/구독 교체, 제출 1회, REST/STOMP·재연결 중 세션 만료 UX |
+| 프론트 브라우저 | `frontend/e2e` | 2 tests | production build의 mock AI 화면 조합과 실제 backend guest·로비·난이도·Python compile/run·결과 overlay |
 | 백엔드 빠른 회귀 | `backend/code/src/test/java` | 90 pass, 6 opt-in skip | Flyway/H2 V1·V2·V3, DTO·오류·보안 계약, JWT/cookie/logout, Google claim·계정·취소·충돌, Redis Lua 상태·매칭, workspace, 저장 aggregate, 민감 payload 암호화·삭제·batch 정리, correlation context·metric·health |
 | 실제 인프라 통합 | `backend/code/src/test/java/.../integration` | 6 tests | MySQL migration·Redis, 인증/AI 전체 흐름, 두 사용자 PvP 동시 제출·disconnect, readiness·Prometheus·correlation header, DB/Redis 장애·복구, 민감 payload 평문 비노출·legacy 전환·감사·삭제 |
 | 엔진 규칙 | `engine/tests/test_land_grab.py`, `test_referee.py` | 4 tests | turn timeout, 마지막 점수, 맵 속성, C compiler 분기 |
@@ -77,13 +77,14 @@ npm.cmd run test:e2e
 - `ObservabilityIntegrationTest`: 실제 MySQL·Redis·Docker image readiness, Prometheus metric 노출, HTTP correlation ID echo.
 - `DependencyFailureInjectionTest`: DB와 Redis 연결을 각각 차단해 readiness 503/DOWN을 확인하고 연결 복원 뒤 200/UP 회복을 확인한다.
 - `SensitiveDataIntegrationTest`: MySQL 원문 비노출, 기존 평문 batch 암호화, 감사되는 복호화, 참가자 요청 삭제를 확인한다.
-- `ai-match.spec.js`: production build에서 게스트 로그인부터 AI 결과 overlay까지 사용자 경로를 검증한다.
+- `arena-ui.spec.js`: mock API로 production build의 로그인 복원, 로비, editor/status/replay 조합과 결과 overlay를 빠르게 검증한다.
+- `ai-match.spec.js`: 실제 backend에서 게스트 로그인부터 AI 결과 overlay까지 사용자 경로를 검증한다.
 
 ## CI 게이트
 
 | workflow | 실행 조건 | 환경 | 범위 |
 | --- | --- | --- | --- |
-| `PR Gate` | ready pull request의 생성·갱신·재오픈 | Ubuntu, Windows | Java 21·Node 24, backend 90 pass/통합 6 skip, frontend 6건·Vite build·전체 의존성 audit, engine 규칙 4건 |
+| `PR Gate` | ready pull request의 생성·갱신·재오픈 | Ubuntu, Windows | Java 21·Node 24, backend 90 pass/통합 6 skip, frontend 18건·Vite build·전체 의존성 audit, engine 규칙 4건 |
 | `Release Gate` | 수동 실행, `v*` tag push | Ubuntu | Java 21·Node 24, 의존성 audit, engine image·8건/5언어, Testcontainers 실제 통합 6건, package, Compose backend, Chromium E2E |
 
 Draft PR은 무거운 regression job을 실행하지 않는다. Ready PR의 최신 커밋만 검사하며 추가 push가 오면 같은 PR의 이전 실행을 취소한다. `main` 병합 후에는 PR Gate를 반복하지 않고, repository ruleset이 Ubuntu·Windows 두 PR check와 최신 base 반영을 병합 전에 강제한다. Release Gate는 실제 인프라·engine·DB·인증 경계 변경에서 PR branch를 대상으로 병합 전에 수동 실행한다.
