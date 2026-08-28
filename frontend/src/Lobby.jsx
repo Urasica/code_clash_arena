@@ -1,4 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react'; // useRef 추가
+import React, { useState, useEffect, useRef } from 'react';
+import BattleNotice from './features/landGrab/components/BattleNotice';
+import { getSession } from './features/auth/authApi';
+import { isSessionExpiredSignal } from './features/auth/sessionErrors';
 import { createStompClient } from './shared/realtime/createStompClient';
 
 const Lobby = ({ onStartGame, isLoggedIn, onRequestLogin, userInfo, onLogout }) => {
@@ -10,15 +13,26 @@ const Lobby = ({ onStartGame, isLoggedIn, onRequestLogin, userInfo, onLogout }) 
   const minutes = Math.floor(elapsed / 60);
   const seconds = elapsed % 60;
 
-  // 매칭 상태
-  const [isSearching, setIsSearching] = useState(false); // 매칭 중 여부
-  const stompClient = useRef(null); // 소켓 클라이언트 객체 유지
+  const [isSearching, setIsSearching] = useState(false);
+  const [matchmakingConnection, setMatchmakingConnection] = useState('idle');
+  const [matchmakingNotice, setMatchmakingNotice] = useState(null);
+  const stompClient = useRef(null);
+  const matchSubscription = useRef(null);
+  const matchmakingActive = useRef(false);
 
-  // 컴포넌트 언마운트 시 소켓 연결 해제 (Clean-up)
   useEffect(() => {
     return () => {
+      matchmakingActive.current = false;
+      if (matchSubscription.current) {
+        try {
+          matchSubscription.current.unsubscribe();
+        } catch {
+          // The transport may already be closed.
+        }
+        matchSubscription.current = null;
+      }
       if (stompClient.current) {
-        stompClient.current.deactivate();
+        void stompClient.current.deactivate();
       }
     };
   }, []);
@@ -55,72 +69,176 @@ const Lobby = ({ onStartGame, isLoggedIn, onRequestLogin, userInfo, onLogout }) 
     onRequestLogin(); // 로그인 페이지로 이동
   };
 
-  // ---------------------------------------------------------
-  // [NEW] PvP 매칭 시작 (WebSocket 연결)
-  // ---------------------------------------------------------
   const handlePvPStart = () => {
     if (!isLoggedIn) {
       setShowLoginModal(true);
       return;
     }
+    if (matchmakingActive.current) return;
 
-    setIsSearching(true); // UI를 '매칭 중' 상태로 변경
+    matchmakingActive.current = true;
+    setIsSearching(true);
+    setMatchmakingConnection('connecting');
+    setMatchmakingNotice(null);
 
-    // 1. 소켓 클라이언트 설정
+    let sessionCheckInFlight = false;
     const client = createStompClient({
       debug: (str) => {
         console.log(str);
       },
-      // 연결 성공 시 실행될 콜백
       onConnect: () => {
-        console.log("✅ Connected to WebSocket");
+        if (!matchmakingActive.current || stompClient.current !== client) return;
 
-        // 2. 내 전용 채널 구독 (매칭 성공 신호 받기 위함)
-        // 주소: /topic/match/{userId}
-        client.subscribe(`/topic/match/${userInfo.userId}`, (message) => {
-          const matchData = JSON.parse(message.body);
-          console.log("🎉 Match Found!", matchData);
-          
-          // 매칭 성공! -> 상태 초기화 후 게임 화면으로 이동
+        if (matchSubscription.current) {
+          try {
+            matchSubscription.current.unsubscribe();
+          } catch {
+            // A reconnect may already have discarded the previous transport.
+          }
+          matchSubscription.current = null;
+        }
+
+        setMatchmakingConnection('connected');
+        setMatchmakingNotice(null);
+
+        matchSubscription.current = client.subscribe(`/topic/match/${userInfo.userId}`, (message) => {
+          if (!matchmakingActive.current || stompClient.current !== client) return;
+          let matched;
+          try {
+            matched = JSON.parse(message.body);
+          } catch {
+            matchmakingActive.current = false;
+            setIsSearching(false);
+            setMatchmakingConnection('failed');
+            setMatchmakingNotice({
+              code: 'INVALID_MATCH_MESSAGE',
+              level: 'error',
+              title: '매칭 정보를 읽지 못했습니다',
+              message: '잠시 후 매칭을 다시 시작해 주세요.',
+            });
+            void client.deactivate();
+            return;
+          }
+
+          matchmakingActive.current = false;
           setIsSearching(false);
-          stompClient.current.deactivate(); // 소켓 끊고 이동
-          
-          // onStartGame에 매칭 정보를 넘겨줌 (App.js나 GameArena에서 처리 필요)
-          onStartGame('pvp', matchData); 
-        });
+          setMatchmakingConnection('idle');
+          matchSubscription.current = null;
+          void client.deactivate();
+          onStartGame('pvp', matched);
+        }, { id: `matchmaking-${userInfo.userId}` });
 
-        // 3. 대기열 참가 요청 전송
         client.publish({
-            destination: '/app/match/join',
-            body: JSON.stringify({ gameType: 'land_grab' }),
+          destination: '/app/match/join',
+          body: JSON.stringify({ gameType: 'land_grab' }),
         });
       },
       onStompError: (frame) => {
-        console.error('Broker reported error: ' + frame.headers['message']);
-        console.error('Additional details: ' + frame.body);
-        setIsSearching(false);
+        if (!matchmakingActive.current || stompClient.current !== client) return;
+        if (isSessionExpiredSignal(frame)) {
+          matchmakingActive.current = false;
+          setIsSearching(false);
+          setMatchmakingConnection('failed');
+          setMatchmakingNotice({
+            code: 'SESSION_EXPIRED',
+            level: 'error',
+            title: '로그인 세션이 만료되었습니다',
+            message: '다시 로그인한 뒤 PvP 매칭을 시작해 주세요.',
+          });
+          void client.deactivate();
+          return;
+        }
+
+        setMatchmakingConnection('reconnecting');
+        setMatchmakingNotice({
+          code: 'MATCHMAKING_CONNECTION_LOST',
+          level: 'warning',
+          title: '매칭 서버에 다시 연결하고 있습니다',
+          message: '작성 중인 매칭 요청은 유지되며 연결 복구 후 다시 확인합니다.',
+        });
+      },
+      onWebSocketClose: (event) => {
+        if (!matchmakingActive.current || stompClient.current !== client) return;
+        matchSubscription.current = null;
+
+        if (isSessionExpiredSignal(event)) {
+          matchmakingActive.current = false;
+          setIsSearching(false);
+          setMatchmakingConnection('failed');
+          setMatchmakingNotice({
+            code: 'SESSION_EXPIRED',
+            level: 'error',
+            title: '로그인 세션이 만료되었습니다',
+            message: '다시 로그인한 뒤 PvP 매칭을 시작해 주세요.',
+          });
+          void client.deactivate();
+          return;
+        }
+
+        setMatchmakingConnection('reconnecting');
+        setMatchmakingNotice({
+          code: 'MATCHMAKING_CONNECTION_LOST',
+          level: 'warning',
+          title: '매칭 서버에 다시 연결하고 있습니다',
+          message: '작성 중인 매칭 요청은 유지되며 연결 복구 후 다시 확인합니다.',
+        });
+
+        if (!sessionCheckInFlight) {
+          sessionCheckInFlight = true;
+          void getSession()
+            .catch((error) => {
+              if (
+                matchmakingActive.current
+                && stompClient.current === client
+                && isSessionExpiredSignal(error)
+              ) {
+                matchmakingActive.current = false;
+                setIsSearching(false);
+                setMatchmakingConnection('failed');
+                setMatchmakingNotice({
+                  code: 'SESSION_EXPIRED',
+                  level: 'error',
+                  title: '로그인 세션이 만료되었습니다',
+                  message: '다시 로그인한 뒤 PvP 매칭을 시작해 주세요.',
+                });
+                return client.deactivate();
+              }
+              return undefined;
+            })
+            .finally(() => {
+              sessionCheckInFlight = false;
+            });
+        }
       },
     });
 
-    // 소켓 활성화
-    client.activate();
     stompClient.current = client;
+    client.activate();
   };
 
-  // ---------------------------------------------------------
-  // [NEW] 매칭 취소
-  // ---------------------------------------------------------
   const handlePvPCancel = () => {
+    matchmakingActive.current = false;
     if (stompClient.current && stompClient.current.connected) {
-        // 취소 메시지 전송
-        stompClient.current.publish({
-            destination: '/app/match/cancel',
-            body: JSON.stringify({ gameType: 'land_grab' }),
-        });
-        // 연결 끊기
-        stompClient.current.deactivate();
+      stompClient.current.publish({
+        destination: '/app/match/cancel',
+        body: JSON.stringify({ gameType: 'land_grab' }),
+      });
+    }
+    if (matchSubscription.current) {
+      try {
+        matchSubscription.current.unsubscribe();
+      } catch {
+        // The transport may already be closed.
+      }
+      matchSubscription.current = null;
+    }
+    if (stompClient.current) {
+      void stompClient.current.deactivate();
+      stompClient.current = null;
     }
     setIsSearching(false);
+    setMatchmakingConnection('idle');
+    setMatchmakingNotice(null);
   };
 
   // 게임 카드 데이터 (한글화 적용)
@@ -161,6 +279,17 @@ const Lobby = ({ onStartGame, isLoggedIn, onRequestLogin, userInfo, onLogout }) 
       <p style={{ color: 'var(--text-dim)', marginBottom: '40px', fontSize: '16px' }}>
         <b>알고리즘 서바이벌 플랫폼: {selectedGame ? '모드를 선택하세요' : '도전할 게임을 선택하세요'}</b>
       </p>
+
+      {matchmakingNotice && (
+        <div style={{ maxWidth: '900px', margin: '0 auto 20px' }}>
+          <BattleNotice
+            notice={matchmakingNotice}
+            onClear={() => setMatchmakingNotice(null)}
+            onSessionExpired={onRequestLogin}
+            sessionActionLabel="다시 로그인"
+          />
+        </div>
+      )}
 
       {/* 우측 상단 유저 상태 */}
       <div style={{ position: 'absolute', top: '10px', right: '20px', fontSize: '14px', zIndex: 10 }}>
@@ -386,8 +515,14 @@ const Lobby = ({ onStartGame, isLoggedIn, onRequestLogin, userInfo, onLogout }) 
                     borderTop: '5px solid var(--secondary)', borderRadius: '50%', 
                     margin: '0 auto 20px', animation: 'spin 1s linear infinite' 
                 }}></div>
-                <h2 style={{ color: 'white', marginBottom: '10px' }}>SEARCHING...</h2>
-                <p style={{ color: '#aaa', fontSize: '14px' }}>상대 할 플레이어를 찾고 있습니다.</p>
+                <h2 style={{ color: 'white', marginBottom: '10px' }}>
+                  {matchmakingConnection === 'reconnecting' ? 'RECONNECTING...' : 'SEARCHING...'}
+                </h2>
+                <p style={{ color: '#aaa', fontSize: '14px' }}>
+                  {matchmakingConnection === 'reconnecting'
+                    ? '연결을 복구한 뒤 매칭 상태를 다시 확인합니다.'
+                    : '상대 할 플레이어를 찾고 있습니다.'}
+                </p>
                 <div style={{ marginTop: '20px', fontSize: '20px', fontFamily: 'monospace' }}>
                   {minutes.toString().padStart(2, '0')}:
                   {seconds.toString().padStart(2, '0')}
