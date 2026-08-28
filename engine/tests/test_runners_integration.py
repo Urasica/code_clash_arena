@@ -26,12 +26,92 @@ RUNNER_FILES = {
     "javascript": ("js_runner.js", "p1.js"),
 }
 
+SECURITY_CORPUS = {
+    "filesystem_boundaries": """
+import os
+
+_checked = False
+
+def strategy(my_pos, coins, walls, board_size):
+    global _checked
+    if not _checked:
+        for protected_path in ('/run/players/p2/p2.py', '/app/referee.py'):
+            try:
+                with open(protected_path, 'r', encoding='utf-8') as protected:
+                    protected.read(1)
+                raise RuntimeError('isolation breach: ' + protected_path)
+            except PermissionError:
+                pass
+        try:
+            with open('/app/security-probe', 'w', encoding='utf-8') as probe:
+                probe.write('breach')
+            raise RuntimeError('isolation breach: read-only root')
+        except OSError:
+            pass
+        _checked = True
+    return 'STAY'
+""",
+    "capability_and_signal_boundaries": """
+import os
+
+_checked = False
+
+def strategy(my_pos, coins, walls, board_size):
+    global _checked
+    if not _checked:
+        with open('/proc/self/status', 'r', encoding='utf-8') as status_file:
+            status = status_file.read()
+        effective_caps = next(
+            line.split()[1] for line in status.splitlines() if line.startswith('CapEff:')
+        )
+        if int(effective_caps, 16) != 0:
+            raise RuntimeError('isolation breach: effective capabilities')
+        try:
+            os.kill(1, 0)
+            raise RuntimeError('isolation breach: referee signal')
+        except PermissionError:
+            pass
+        _checked = True
+    return 'STAY'
+""",
+    "network_disabled": """
+import socket
+
+_checked = False
+
+def strategy(my_pos, coins, walls, board_size):
+    global _checked
+    if not _checked:
+        connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        connection.settimeout(0.1)
+        try:
+            connection.connect(('1.1.1.1', 53))
+            raise RuntimeError('isolation breach: outbound network')
+        except OSError:
+            pass
+        finally:
+            connection.close()
+        _checked = True
+    return 'STAY'
+""",
+    "environment_scrubbed": """
+import os
+
+def strategy(my_pos, coins, walls, board_size):
+    if 'CCA_SECURITY_SENTINEL' in os.environ:
+        raise RuntimeError('isolation breach: inherited environment')
+    if set(os.environ) - {'PATH', 'HOME', 'LANG'}:
+        raise RuntimeError('isolation breach: unexpected environment')
+    return 'STAY'
+""",
+}
+
 
 def docker_is_ready():
     if not shutil.which("docker"):
         return False
     result = subprocess.run(
-        ["docker", "image", "inspect", IMAGE],
+        ["docker", "inspect", "--type", "image", IMAGE],
         capture_output=True,
         text=True,
         timeout=10,
@@ -42,7 +122,7 @@ def docker_is_ready():
 @unittest.skipUnless(docker_is_ready(), f"Docker image {IMAGE} is not available")
 class RunnerIntegrationTest(unittest.TestCase):
 
-    def docker_command(self, temp_dir, mode, include_data=False):
+    def docker_command(self, temp_dir, mode, include_data=False, environment=None):
         command = [
             "docker", "run", "--rm",
             "--network", "none",
@@ -59,6 +139,8 @@ class RunnerIntegrationTest(unittest.TestCase):
             "--cap-add", "SETGID",
             "--security-opt", "no-new-privileges",
         ]
+        for key, value in (environment or {}).items():
+            command.extend(["--env", f"{key}={value}"])
         if include_data:
             command.extend(["-v", f"{Path(temp_dir).as_posix()}:/app/data"])
         command.extend([
@@ -126,59 +208,43 @@ class RunnerIntegrationTest(unittest.TestCase):
                 self.assertEqual(50, payload["total_turns"])
                 self.assertIsNone(payload["p1_error"])
 
-    def test_player_cannot_read_opponent_or_referee_or_signal_referee(self):
-        attack = """
-import os
-import signal
-
-def strategy(my_pos, coins, walls, board_size):
-    with open('/proc/self/status', 'r', encoding='utf-8') as status_file:
-        status = status_file.read()
-    effective_caps = next(line.split()[1] for line in status.splitlines() if line.startswith('CapEff:'))
-    if int(effective_caps, 16) != 0:
-        raise RuntimeError('isolation breach: effective capabilities')
-    for protected_path in ('/run/players/p2/p2.py', '/app/referee.py'):
-        try:
-            with open(protected_path, 'r', encoding='utf-8') as protected:
-                protected.read(1)
-            raise RuntimeError('isolation breach: ' + protected_path)
-        except PermissionError:
-            pass
-    try:
-        os.kill(1, 0)
-        raise RuntimeError('isolation breach: referee signal')
-    except PermissionError:
-        pass
-    return 'STAY'
-"""
+    def test_security_attack_corpus_is_blocked(self):
         opponent = "import sys\nfor _ in sys.stdin:\n print('STAY', flush=True)\n"
 
-        with tempfile.TemporaryDirectory(dir=ENGINE_DIR) as temp_dir:
-            p1_dir = Path(temp_dir) / "p1"
-            p1_dir.mkdir()
-            template = (RUNNER_DIR / "python_runner.py").read_text(encoding="utf-8")
-            (p1_dir / "p1.py").write_text(
-                template.replace("%USER_CODE%", attack), encoding="utf-8"
-            )
-            p2_dir = Path(temp_dir) / "p2"
-            p2_dir.mkdir()
-            (p2_dir / "p2.py").write_text(opponent, encoding="utf-8")
-            (Path(temp_dir) / "map.json").write_text(
-                json.dumps({"walls": [], "coins": []}), encoding="utf-8"
-            )
+        for attack_name, attack in SECURITY_CORPUS.items():
+            with self.subTest(attack=attack_name), tempfile.TemporaryDirectory(
+                dir=ENGINE_DIR
+            ) as temp_dir:
+                p1_dir = Path(temp_dir) / "p1"
+                p1_dir.mkdir()
+                template = (RUNNER_DIR / "python_runner.py").read_text(encoding="utf-8")
+                (p1_dir / "p1.py").write_text(
+                    template.replace("%USER_CODE%", attack), encoding="utf-8"
+                )
+                p2_dir = Path(temp_dir) / "p2"
+                p2_dir.mkdir()
+                (p2_dir / "p2.py").write_text(opponent, encoding="utf-8")
+                (Path(temp_dir) / "map.json").write_text(
+                    json.dumps({"walls": [], "coins": []}), encoding="utf-8"
+                )
 
-            result = subprocess.run(
-                self.docker_command(temp_dir, "run", include_data=True),
-                capture_output=True,
-                text=True,
-                timeout=40,
-            )
-            payload = json.loads(result.stdout)
+                result = subprocess.run(
+                    self.docker_command(
+                        temp_dir,
+                        "run",
+                        include_data=True,
+                        environment={"CCA_SECURITY_SENTINEL": "must-not-reach-player"},
+                    ),
+                    capture_output=True,
+                    text=True,
+                    timeout=40,
+                )
+                payload = json.loads(result.stdout)
 
-            self.assertEqual(0, result.returncode, result.stderr)
-            self.assertIn("p1_error", payload, (payload, result.stderr))
-            self.assertIsNone(payload["p1_error"])
-            self.assertEqual(50, payload["total_turns"])
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertIn("p1_error", payload, (payload, result.stderr))
+                self.assertIsNone(payload["p1_error"], (attack_name, payload, result.stderr))
+                self.assertEqual(50, payload["total_turns"])
 
 
 if __name__ == "__main__":

@@ -6,6 +6,8 @@ import com.battle.code.domain.MatchExecutionResult;
 import com.battle.code.domain.MatchPlayer;
 import com.battle.code.domain.MatchReplay;
 import com.battle.code.domain.User;
+import com.battle.code.execution.EngineExecutionMetadata;
+import com.battle.code.execution.EngineMetadataProvider;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,6 +22,7 @@ public class MatchPersistenceMapper {
 
     private final ObjectMapper objectMapper;
     private final SensitiveDataService sensitiveDataService;
+    private final EngineMetadataProvider engineMetadataProvider;
 
     public GameMatch toAggregate(
             String matchId,
@@ -31,11 +34,16 @@ public class MatchPersistenceMapper {
         if (mapDataJson == null || mapDataJson.isBlank()) {
             throw new IllegalArgumentException("Match map data is required.");
         }
+        EngineExecutionMetadata metadata = result.executionMetadata() == null
+                ? engineMetadataProvider.currentMetadata()
+                : result.executionMetadata();
         GameMatch match = GameMatch.builder()
                 .matchUuid(matchId)
                 .gameType("LAND_GRAB")
                 .mode(mode)
                 .resultReason(result.reason())
+                .engineDigest(metadata.engineDigest())
+                .enginePolicyVersion(metadata.policyVersion())
                 .mapData(mapDataJson)
                 .build();
         participants.forEach(participant -> match.addPlayer(toPlayer(matchId, result, participant)));

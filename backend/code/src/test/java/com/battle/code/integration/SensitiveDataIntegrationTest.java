@@ -6,6 +6,7 @@ import com.battle.code.domain.User;
 import com.battle.code.domain.MatchExecutionResult;
 import com.battle.code.dto.MatchExecutionResultDto;
 import com.battle.code.dto.TurnLogDto;
+import com.battle.code.execution.EngineExecutionMetadata;
 import com.battle.code.repository.UserRepository;
 import com.battle.code.service.MatchService;
 import com.battle.code.service.MatchExecutionResultMapper;
@@ -74,6 +75,8 @@ class SensitiveDataIntegrationTest extends InfrastructureIntegrationTest {
                 )),
                 null,
                 null
+        )).withExecutionMetadata(new EngineExecutionMetadata(
+                "sha256:" + "a".repeat(64), "integration-v1"
         ));
         matchService.saveMatchResult(
                 userId, matchId, result, "secret strategy", "python", "easy",
@@ -98,6 +101,11 @@ class SensitiveDataIntegrationTest extends InfrastructureIntegrationTest {
                 assertThat(value).startsWith("cca:v1:").doesNotContain("secret strategy")
         );
         assertThat(replayRow).startsWith("cca:v1:").doesNotContain("\"turn\":1");
+        assertThat(jdbcTemplate.queryForMap(
+                "SELECT engine_digest, engine_policy_version FROM game_match WHERE match_uuid = ?",
+                matchId
+        )).containsEntry("engine_digest", "sha256:" + "a".repeat(64))
+                .containsEntry("engine_policy_version", "integration-v1");
 
         jdbcTemplate.update(
                 "UPDATE match_player mp JOIN game_match gm ON gm.id = mp.game_match_id " +

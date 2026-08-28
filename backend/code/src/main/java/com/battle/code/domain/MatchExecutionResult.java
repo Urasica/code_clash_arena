@@ -1,6 +1,7 @@
 package com.battle.code.domain;
 
 import com.battle.code.dto.TurnLogDto;
+import com.battle.code.execution.EngineExecutionMetadata;
 
 import java.util.List;
 import java.util.Map;
@@ -13,8 +14,22 @@ public record MatchExecutionResult(
         Integer totalTurns,
         List<TurnLogDto> logs,
         String p1Error,
-        String p2Error
+        String p2Error,
+        EngineExecutionMetadata executionMetadata
 ) {
+    public MatchExecutionResult(
+            MatchWinner winner,
+            MatchResultReason reason,
+            String systemError,
+            Map<String, Integer> finalScores,
+            Integer totalTurns,
+            List<TurnLogDto> logs,
+            String p1Error,
+            String p2Error
+    ) {
+        this(winner, reason, systemError, finalScores, totalTurns, logs, p1Error, p2Error, null);
+    }
+
     public MatchExecutionResult {
         if (reason == null) {
             throw new IllegalArgumentException("Match result reason is required.");
@@ -35,7 +50,15 @@ public record MatchExecutionResult(
                 null,
                 null,
                 null,
+                null,
                 null
+        );
+    }
+
+    public MatchExecutionResult withExecutionMetadata(EngineExecutionMetadata metadata) {
+        return new MatchExecutionResult(
+                winner, reason, systemError, finalScores, totalTurns, logs,
+                p1Error, p2Error, metadata
         );
     }
 

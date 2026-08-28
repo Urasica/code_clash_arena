@@ -11,6 +11,7 @@ import com.battle.code.data.SensitiveDataProperties;
 import com.battle.code.data.SensitiveDataService;
 import com.battle.code.data.SensitivePayloadCipher;
 import com.battle.code.observability.MatchTelemetry;
+import com.battle.code.execution.EngineMetadataProvider;
 import com.battle.code.repository.GameMatchRepository;
 import com.battle.code.repository.MatchPlayerRepository;
 import com.battle.code.repository.MatchReplayRepository;
@@ -55,7 +56,15 @@ class MatchServiceTest {
                 matchRepository,
                 userRepository,
                 MatchTelemetry.noOp(),
-                new MatchPersistenceMapper(new ObjectMapper(), sensitiveDataService)
+                new MatchPersistenceMapper(
+                        new ObjectMapper(),
+                        sensitiveDataService,
+                        EngineMetadataProvider.fixed(
+                                "sha256:" + "a".repeat(64),
+                                "sha256:" + "a".repeat(64),
+                                "test-v1"
+                        )
+                )
         );
     }
 
@@ -75,6 +84,8 @@ class MatchServiceTest {
         GameMatch saved = captor.getValue();
         assertThat(saved.getMapData()).isEqualTo("{\"walls\":[],\"coins\":[]}");
         assertThat(saved.getResultReason()).isEqualTo(MatchResultReason.SCORE);
+        assertThat(saved.getEngineDigest()).isEqualTo("sha256:" + "a".repeat(64));
+        assertThat(saved.getEnginePolicyVersion()).isEqualTo("test-v1");
         assertThat(saved.getPlayers()).hasSize(2);
         assertThat(saved.getPlayers())
                 .extracting(player -> player.getPlayerIndex() + ":" + player.getResult())

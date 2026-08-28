@@ -28,6 +28,9 @@ erDiagram
         string matchUuid UK
         string gameType
         string mode
+        string resultReason
+        string engineDigest
+        string enginePolicyVersion
         text mapData
         datetime playedAt
     }
@@ -77,6 +80,8 @@ erDiagram
 - `matchUuid`는 외부에 노출되는 UUID이며 unique다.
 - `gameType`은 현재 `LAND_GRAB`.
 - `mode`는 `AI` 또는 `PVP`.
+- `resultReason`은 `SCORE`, `SCORE_DRAW`, `PLAYER_CRASH`, `BOTH_PLAYERS_CRASH`, `OPPONENT_DISCONNECTED`, `SYSTEM_ERROR`의 판정 사유다. 기존 행은 `LEGACY`다.
+- `engineDigest`와 `enginePolicyVersion`은 실제 실행 image와 자원 정책을 재현하기 위한 추적값이다. 기존 행은 `legacy-unknown`이다.
 - player와 replay는 cascade 저장한다.
 - `playedAt`은 persist 시 생성된다.
 - AI는 workspace의 `map.json`, PvP는 room의 `mapData` snapshot을 저장한다.
@@ -86,7 +91,7 @@ erDiagram
 
 - p1/p2별 user, result, score, 암호화된 submitted code, language를 저장한다.
 - AI 대전의 p2는 `user=null`, `language=python`이며 `AI-{DIFFICULTY}` 표식도 다른 제출 코드와 같은 방식으로 암호화한다.
-- result 문자열은 `WIN`, `LOSE`, `DRAW`다.
+- result는 `MatchOutcome` enum의 `WIN`, `LOSE`, `DRAW`로 저장한다.
 - code가 만료되거나 삭제되면 payload는 null이 되고 `submittedCodePurgedAt`에 처리 시각을 남긴다.
 
 ### MatchReplay
@@ -101,9 +106,9 @@ engine `logs` 전체 배열을 JSON 직렬화하고 암호화해 LONGTEXT 한 �
 
 1. system `error`가 있으면 저장하지 않는다.
 2. user를 조회한다.
-3. GameMatch에 map snapshot을 넣고 제출 코드와 replay를 저장 전 암호화한다.
-4. p1 사용자의 winner/crash 결과를 계산한다.
-5. p2 AI 결과를 계산한다.
+3. `MatchPersistenceMapper`가 typed result에서 match reason과 p1/p2 outcome을 한 번만 계산하고 map snapshot, engine digest, policy version을 GameMatch에 넣는다.
+4. 제출 코드와 replay를 저장 전 암호화한다.
+5. p1 사용자와 p2 AI entity를 aggregate에 연결한다.
 6. UUID 중복 여부를 확인한 뒤 aggregate를 한 transaction으로 저장한다.
 
 DB 저장 실패는 controller 로그에 남지만 engine 결과 HTTP 응답은 계속 전달한다.
@@ -113,9 +118,9 @@ DB 저장 실패는 controller 로그에 남지만 engine 결과 HTTP 응답은 
 `GameSessionService`가 engine 결과를 받은 뒤 `savePvPMatchResult`를 호출한다.
 
 1. p1/p2 user 조회.
-2. score/winner/reason/error 파싱.
-3. Redis room의 map snapshot으로 GameMatch와 선택적 replay 생성.
-4. 각 player 결과를 생성하고 제출 코드와 replay를 저장 전 암호화한다.
+2. engine DTO를 `MatchExecutionResult`와 reason/outcome enum으로 변환한다.
+3. Redis room의 map snapshot과 실행 digest/policy version으로 GameMatch와 선택적 replay를 생성한다.
+4. 공통 persistence mapper가 각 player 결과를 생성하고 제출 코드와 replay를 저장 전 암호화한다.
 5. cascade save.
 6. 저장 성공 여부와 무관하게 client result 발행을 시도.
 
@@ -133,7 +138,8 @@ disconnect는 winner/reason과 0:0 기본 score로 같은 PvP 저장 경로를 �
 | Redis | `REDIS_HOST`, `REDIS_PORT` | `localhost:6379` |
 | Redis timeout | `REDIS_CONNECT_TIMEOUT`, `REDIS_COMMAND_TIMEOUT` | `3s`, `3s` |
 | frontend origin | `FRONTEND_URL` | `http://localhost:3000` |
-| engine | `ENGINE_IMAGE`, `ENGINE_WORKSPACE` | `code-battle-engine`, `temp` |
+| engine | `ENGINE_IMAGE`, `ENGINE_WORKSPACE` | `code-battle-engine:latest`, `temp` |
+| engine policy | `ENGINE_POLICY_VERSION`, `ENGINE_CPUS`, `ENGINE_MEMORY`, `ENGINE_PIDS_LIMIT`, `ENGINE_*_SIZE`, `ENGINE_MAX_OUTPUT_BYTES`, `ENGINE_*_TIMEOUT` | `m3-v1`, 0.5 CPU, 512m, PID 128, 64m/128m, 8 MiB, 15s/20s/40s |
 | management | `MANAGEMENT_PORT`, `ENGINE_READINESS_TIMEOUT` | `8081`, `3s` |
 | JWT/cookie | `JWT_SECRET`, `JWT_EXPIRATION`, `COOKIE_SECURE`, `COOKIE_SAME_SITE` | 개발값, 7d, false, Lax |
 | 민감 데이터 | `DATA_ENCRYPTION_*`, `DATA_*_RETENTION`, `DATA_MAX_*`, `DATA_CLEANUP_*` | 개발 키, code 7d, replay 30d, 최신 1,000 match |
@@ -151,6 +157,8 @@ readiness에 포함되는 DB·Redis 검사가 네트워크 단절 상태에서 �
 - V2는 `users(provider, provider_id)`에 `uk_users_provider_identity` unique 제약을 추가해 동일 Google `sub`의 중복 계정 생성을 막는다. H2 테스트 migration도 같은 계약을 적용한다.
 - V2 배포 전 `provider_id IS NOT NULL`인 기존 행을 `(provider, provider_id)`로 집계해 중복이 없는지 확인한다. 중복이 있으면 계정 소유 관계를 먼저 수동 정리하고 migration을 실행하며 임의 병합하지 않는다.
 - V3는 제출 코드를 nullable LONGTEXT로 바꾸고 삭제 시각과 `sensitive_data_audit` table/index를 추가한다. 기동 후 애플리케이션 batch가 기존 평문 code/replay를 AES-GCM envelope로 전환한다.
+- V4는 `game_match.result_reason`을 추가하고 기존 행을 `LEGACY`로 표시한다.
+- V5는 `engine_digest`, `engine_policy_version`을 추가하고 기존 행을 `legacy-unknown`으로 표시한다. 신규 AI/PvP/disconnect 저장은 두 값을 필수로 채운다.
 - 기존 map을 복원할 수 없는 행은 `{"legacy":true}`로 표시한다. 신규 AI/PvP 결과에는 실제 초기 map JSON이 필수다.
 - migration 후 Hibernate `validate`가 entity와 물리 schema의 타입·필수 table/column 일치를 확인하며 불일치 시 기동을 중단한다.
 - 배포 전 DB backup을 만들고 애플리케이션과 동일 계정으로 migration 권한을 확인해야 한다. 이미 적용된 migration 파일은 수정하지 않고 다음 버전 파일을 추가한다.

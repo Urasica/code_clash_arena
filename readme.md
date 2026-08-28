@@ -75,7 +75,7 @@ docker compose ps
 
 ### 2. 코드 실행 이미지
 
-백엔드 기본 이미지 이름과 아래 태그는 모두 `code-battle-engine`입니다.
+백엔드 기본 이미지 참조는 `code-battle-engine:latest`이며 아래 빌드 명령이 같은 태그를 만듭니다. 매치 실행 시에는 이 태그를 불변 digest로 해석해 실행·저장합니다.
 
 ```powershell
 docker build -t code-battle-engine engine
@@ -130,7 +130,7 @@ python -m unittest discover -s engine/tests -v
 | MySQL·Redis | `DATABASE_*`, `REDIS_*` |
 | 프론트·쿠키 | `FRONTEND_URL`, `VITE_API_BASE_URL`, `COOKIE_*` |
 | 인증 | `JWT_SECRET`, `SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_*` |
-| 코드 실행 | `ENGINE_IMAGE`, `ENGINE_WORKSPACE` |
+| 코드 실행 | `ENGINE_IMAGE`, `ENGINE_WORKSPACE`, `ENGINE_POLICY_VERSION`, `ENGINE_CPUS`, `ENGINE_MEMORY`, `ENGINE_PIDS_LIMIT`, `ENGINE_*_TIMEOUT` |
 | 민감 데이터 | `DATA_ENCRYPTION_*`, `DATA_*_RETENTION`, `DATA_MAX_*` |
 
 Spring Boot 단독 실행은 루트 `.env`를 자동으로 읽지 않습니다. 셸이나 IDE 실행 설정으로 필요한 값을 주입해야 합니다. 전체 설정과 기본값은 [영속화·운영 설계](doc/05-persistence-operations.md)를 참고합니다.

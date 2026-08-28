@@ -14,6 +14,8 @@
 | `WorkspaceLeaseService` | AI workspace owner·상태·만료시각과 Redis TTL 관리 |
 | `WorkspaceJanitor` | 시작 시점과 주기 실행으로 lease 없는 고아 workspace 정리 |
 | `DockerMatchExecutor` | docker command, process stream, 전체 timeout, 출력 크기 상한 |
+| `EnginePolicyProperties` | CPU·memory·PID·tmpfs·출력·mode별 timeout의 검증된 설정 |
+| `DockerEngineMetadataProvider` | image tag를 불변 digest로 해석하고 policy version과 실행 snapshot 생성 |
 | `engine/referee.py` | game module 선택, 언어 감지·컴파일, init/compile/run mode |
 | `engine/games/land_grab.py` | 맵 생성, player protocol, 턴 루프, 점수·winner·replay |
 
@@ -50,30 +52,32 @@ AI run은 p1 사용자 코드와 p2 Python AI를 쓴다. PvP run은 두 runner�
 
 ## Docker 실행 정책
 
-기본 이미지: `ENGINE_IMAGE=code-battle-engine`.
+기본 이미지: `ENGINE_IMAGE=code-battle-engine:latest`. 실행 직전에 Docker image를 inspect해 repository digest 또는 image ID를 얻고, tag가 아니라 이 불변 참조로 container를 실행한다. `ENGINE_POLICY_VERSION`은 정책값을 변경할 때 함께 올리는 운영 식별자이며 run 결과와 disconnect 결과 모두 `game_match`에 digest와 함께 저장된다.
 
 이미지는 Ubuntu 24.04를 기반으로 Python 3.12 계열, OpenJDK 21, GCC/G++ 13 계열을 설치하고 Node 24.18.0 binary를 명시적으로 가져온다. JavaScript와 Java runner의 지원 버전은 프론트/백엔드 CI와 같은 Node 24·Java 21 기준이며, 이미지 변경은 다섯 언어 compile/run 계약을 모두 통과해야 한다.
 
 | 제한 | 값 |
 | --- | --- |
 | network | `none` |
-| CPU | `0.5` |
-| memory | `512m` |
-| PID | `128` |
+| CPU | `ENGINE_CPUS`, 기본 `0.5` |
+| memory | `ENGINE_MEMORY`, 기본 `512m` |
+| PID | `ENGINE_PIDS_LIMIT`, 기본 `128` |
 | root filesystem | read-only |
-| temp | `/tmp`, 64 MiB, noexec/nosuid |
-| player runtime | `/run/players`, 128 MiB, exec/nosuid/nodev |
+| temp | `/tmp`, `ENGINE_TEMP_SIZE`, 기본 64 MiB, noexec/nosuid |
+| player runtime | `/run/players`, `ENGINE_PLAYERS_SIZE`, 기본 128 MiB, exec/nosuid/nodev |
 | referee capabilities | drop all 후 CHOWN, DAC_READ_SEARCH, KILL, SETUID, SETGID만 추가 |
 | player UID/capabilities | p1=10001, p2=10002, effective capabilities 0 |
 | security option | `no-new-privileges` |
-| stdout/stderr | stream당 최대 8 MiB |
-| backend init timeout | 15초 |
-| backend compile timeout | 20초 |
-| backend run timeout | 40초 |
+| stdout/stderr | stream당 `ENGINE_MAX_OUTPUT_BYTES`, 기본 8 MiB |
+| backend init timeout | `ENGINE_INIT_TIMEOUT`, 기본 15초 |
+| backend compile timeout | `ENGINE_COMPILE_TIMEOUT`, 기본 20초 |
+| backend run timeout | `ENGINE_RUN_TIMEOUT`, 기본 40초 |
 | engine compiler timeout | 10초 |
 | player turn timeout | 0.5초 |
 
-container는 `--rm`으로 실행한다. data와 players는 run/compile mode에 필요한 경우에만 같은 host match directory를 `/app/data`, `/app/players`에 mount한다. init은 bind mount 없이 map JSON만 stdout으로 반환하고, 백엔드가 필수 필드를 검증한 뒤 host workspace의 `map.json`을 저장한다. run/compile mount는 root 심판만 읽는다. 심판은 각 소스를 `/run/players/p1|p2`로 복사한 뒤 디렉터리와 파일을 해당 전용 UID에 넘기고 mode 700/600으로 잠근다. compile과 player process는 비어 있는 환경과 전용 HOME으로 UID 전환한 뒤 시작한다. `/app` 전체는 root만 읽을 수 있다.
+container는 `--rm`으로 실행한다. network 차단, read-only root, capability allowlist와 `no-new-privileges`는 설정으로 완화할 수 없는 고정 보안 경계다. 설정 binding은 CPU 0.1~4.0, PID 16~1024, memory/tmpfs 크기와 timeout 1초~5분 범위를 검증하며 범위를 벗어나면 기동을 거부한다. data와 players는 run/compile mode에 필요한 경우에만 같은 host match directory를 `/app/data`, `/app/players`에 mount한다. init은 bind mount 없이 map JSON만 stdout으로 반환하고, 백엔드가 필수 필드를 검증한 뒤 host workspace의 `map.json`을 저장한다. run/compile mount는 root 심판만 읽는다. 심판은 각 소스를 `/run/players/p1|p2`로 복사한 뒤 디렉터리와 파일을 해당 전용 UID에 넘기고 mode 700/600으로 잠근다. compile과 player process는 비어 있는 환경과 전용 HOME으로 UID 전환한 뒤 시작한다. `/app` 전체는 root만 읽을 수 있다.
+
+Docker 통합 보안 corpus는 상대·심판 파일 읽기, read-only root 쓰기, effective capability, referee signal, 외부 network, container 환경 변수 상속 공격을 실제 player 코드로 실행하며 모두 차단되는지 확인한다.
 
 ## mode 계약
 
@@ -125,11 +129,10 @@ turn snapshot은 action, position, alive, coins, walls, board, scores, board_siz
 
 ## 현재 제약
 
-- 자원·timeout 값 일부가 코드 상수이고 match 결과에 engine image digest/policy version이 없다.
 - 심판과 플레이어는 같은 container PID namespace를 사용하므로 커널 수준의 완전한 container 분리는 아니며, UID·파일 mode·capability 경계로 상호 접근을 차단한다.
 - Redis가 장시간 중단되면 새 AI workspace lease를 만들 수 없으므로 `/start`도 실패하고 생성한 폴더를 되돌린다.
 - 실행 중 사용자 코드는 match workspace의 파일로 존재하고 종료·TTL 정리 시 삭제된다. DB로 영속화되는 code/replay는 저장 경계에서 암호화되지만 workspace 자체는 별도 저장 암호화를 사용하지 않는다.
 - container 생성 비용과 동시 실행 capacity가 측정되지 않았다.
 - engine 자체는 JSON 프로세스 계약이지만 백엔드 경계에서 명시적 DTO와 직렬화 계약 테스트로 검증한다.
 
-후속 작업은 M3 `EXEC-01`, `BE-01`과 M4 `SCALE-01`로 관리한다. DB 민감 payload 정책은 [민감 데이터 수명 설계](09-sensitive-data-lifecycle.md)를 따른다.
+후속 용량 측정과 container 재사용 여부는 M4 `SCALE-01`로 관리한다. DB 민감 payload 정책은 [민감 데이터 수명 설계](09-sensitive-data-lifecycle.md)를 따른다.
