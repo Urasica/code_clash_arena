@@ -4,6 +4,7 @@ import com.battle.code.dto.CompileResultDto;
 import com.battle.code.dto.LandGrabMapDto;
 import com.battle.code.dto.MatchExecutionResultDto;
 import com.battle.code.dto.StartMatchResponseDto;
+import com.battle.code.domain.MatchExecutionResult;
 import com.battle.code.execution.DockerMatchExecutor;
 import com.battle.code.execution.MatchWorkspaceManager;
 import com.battle.code.execution.WorkspaceLeaseService;
@@ -123,7 +124,9 @@ public class LandGrabService {
                     matchDir, GAME_TYPE, "run", true, true, RUN_TIMEOUT_SECONDS
             );
             return new MatchRunOutcome(
-                    objectMapper.readValue(jsonOutput, MatchExecutionResultDto.class),
+                    MatchExecutionResultMapper.fromEngine(
+                            objectMapper.readValue(jsonOutput, MatchExecutionResultDto.class)
+                    ),
                     mapDataJson
             );
         } finally {
@@ -136,7 +139,7 @@ public class LandGrabService {
     }
 
     // PvP 매치 실행
-    public MatchExecutionResultDto runPvPMatch(String matchId, String p1Code, String p1Lang, String p2Code, String p2Lang, String mapDataJson) throws IOException, InterruptedException {
+    public MatchExecutionResult runPvPMatch(String matchId, String p1Code, String p1Lang, String p2Code, String p2Lang, String mapDataJson) throws IOException, InterruptedException {
         Path matchDir = workspaceManager.resolve(matchId);
         if (!Files.exists(matchDir)) Files.createDirectories(matchDir);
 
@@ -153,7 +156,9 @@ public class LandGrabService {
             );
             log.debug("Docker result received for match {} ({} bytes)", matchId, jsonOutput.length());
 
-            return objectMapper.readValue(jsonOutput, MatchExecutionResultDto.class);
+            return MatchExecutionResultMapper.fromEngine(
+                    objectMapper.readValue(jsonOutput, MatchExecutionResultDto.class)
+            );
         } finally {
             workspaceManager.delete(matchDir);
         }

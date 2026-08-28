@@ -2,7 +2,8 @@ package com.battle.code.service;
 
 import com.battle.code.dto.GameErrorMessage;
 import com.battle.code.dto.GameNotificationMessage;
-import com.battle.code.dto.MatchExecutionResultDto;
+import com.battle.code.domain.MatchExecutionResult;
+import com.battle.code.domain.MatchWinner;
 import com.battle.code.observability.MatchLogContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -112,9 +113,9 @@ public class GameSessionService {
             String p1Id = requiredValue(roomKey, "p1");
             String p2Id = requiredValue(roomKey, "p2");
 
-            MatchExecutionResultDto result = landGrabService.runPvPMatch(
+            MatchExecutionResult result = landGrabService.runPvPMatch(
                     matchId, p1Code, p1Lang, p2Code, p2Lang, mapDataJson
-            ).asRealtimeResult();
+            );
             if (!stateService.transition(matchId, MatchStatus.PERSISTING, MatchStatus.RUNNING)) {
                 throw new IllegalStateException("Match state changed before persistence.");
             }
@@ -125,7 +126,9 @@ public class GameSessionService {
             if (!stateService.transition(matchId, MatchStatus.COMPLETED, MatchStatus.PERSISTING)) {
                 throw new IllegalStateException("Match state changed before completion.");
             }
-            messagingTemplate.convertAndSend(gameTopic(matchId), result);
+            messagingTemplate.convertAndSend(
+                    gameTopic(matchId), MatchExecutionResultMapper.toRealtime(result)
+            );
         } catch (Exception exception) {
             log.error("PvP match execution failed. matchId={}", matchId, exception);
             stateService.transition(
@@ -194,8 +197,8 @@ public class GameSessionService {
             return;
         }
 
-        MatchExecutionResultDto result = MatchExecutionResultDto.disconnected(
-                disconnectedUserId.equals(p1Id) ? "p2" : "p1"
+        MatchExecutionResult result = MatchExecutionResult.disconnected(
+                disconnectedUserId.equals(p1Id) ? MatchWinner.P2 : MatchWinner.P1
         );
         try {
             matchService.savePvPMatchResult(
@@ -209,7 +212,9 @@ public class GameSessionService {
                     value(roomKey, "p2_lang"),
                     requiredValue(roomKey, "mapData")
             );
-            messagingTemplate.convertAndSend(gameTopic(matchId), result);
+            messagingTemplate.convertAndSend(
+                    gameTopic(matchId), MatchExecutionResultMapper.toRealtime(result)
+            );
         } finally {
             cleanupMatch(matchId);
         }

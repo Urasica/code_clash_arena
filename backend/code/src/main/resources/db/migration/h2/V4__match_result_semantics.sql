@@ -1,0 +1,2 @@
+ALTER TABLE game_match
+    ADD COLUMN result_reason VARCHAR(64) DEFAULT 'LEGACY' NOT NULL;

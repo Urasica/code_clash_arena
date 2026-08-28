@@ -1,7 +1,9 @@
 package com.battle.code.controller;
 
 import com.battle.code.exception.GlobalExceptionHandler;
-import com.battle.code.dto.MatchExecutionResultDto;
+import com.battle.code.domain.MatchExecutionResult;
+import com.battle.code.domain.MatchResultReason;
+import com.battle.code.domain.MatchWinner;
 import com.battle.code.service.LandGrabService;
 import com.battle.code.service.MatchRunOutcome;
 import com.battle.code.service.MatchService;
@@ -104,9 +106,9 @@ class LandGrabMatchControllerTest {
     void runPersistsTheMapSnapshotReturnedWithTheEngineResult() throws Exception {
         String matchId = "123e4567-e89b-42d3-a456-426614174000";
         String mapData = "{\"walls\":[],\"coins\":[]}";
-        MatchExecutionResultDto result = new MatchExecutionResultDto(
-                null, "p1", "score", null, Map.of("p1", 1, "p2", 0), 1,
-                List.of(), null, null
+        MatchExecutionResult result = new MatchExecutionResult(
+                MatchWinner.P1, MatchResultReason.SCORE, null,
+                Map.of("p1", 1, "p2", 0), 1, List.of(), null, null
         );
         when(landGrabService.runMatch(matchId, 7L, "code", "python", "easy"))
                 .thenReturn(new MatchRunOutcome(result, mapData));

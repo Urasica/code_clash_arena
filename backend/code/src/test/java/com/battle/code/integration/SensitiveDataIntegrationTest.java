@@ -3,10 +3,12 @@ package com.battle.code.integration;
 import com.battle.code.data.SensitiveDataMaintenanceService;
 import com.battle.code.data.SensitiveDataService;
 import com.battle.code.domain.User;
+import com.battle.code.domain.MatchExecutionResult;
 import com.battle.code.dto.MatchExecutionResultDto;
 import com.battle.code.dto.TurnLogDto;
 import com.battle.code.repository.UserRepository;
 import com.battle.code.service.MatchService;
+import com.battle.code.service.MatchExecutionResultMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
@@ -59,7 +61,7 @@ class SensitiveDataIntegrationTest extends InfrastructureIntegrationTest {
         userId = user.getId();
         matchId = UUID.randomUUID().toString();
 
-        MatchExecutionResultDto result = new MatchExecutionResultDto(
+        MatchExecutionResult result = MatchExecutionResultMapper.fromEngine(new MatchExecutionResultDto(
                 null,
                 "p1",
                 "score",
@@ -72,7 +74,7 @@ class SensitiveDataIntegrationTest extends InfrastructureIntegrationTest {
                 )),
                 null,
                 null
-        );
+        ));
         matchService.saveMatchResult(
                 userId, matchId, result, "secret strategy", "python", "easy",
                 "{\"walls\":[],\"coins\":[]}"

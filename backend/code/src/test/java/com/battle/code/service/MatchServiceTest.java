@@ -1,12 +1,15 @@
 package com.battle.code.service;
 
 import com.battle.code.domain.GameMatch;
+import com.battle.code.domain.MatchExecutionResult;
+import com.battle.code.domain.MatchOutcome;
+import com.battle.code.domain.MatchResultReason;
+import com.battle.code.domain.MatchWinner;
 import com.battle.code.domain.User;
 import com.battle.code.data.SensitiveDataAuditService;
 import com.battle.code.data.SensitiveDataProperties;
 import com.battle.code.data.SensitiveDataService;
 import com.battle.code.data.SensitivePayloadCipher;
-import com.battle.code.dto.MatchExecutionResultDto;
 import com.battle.code.observability.MatchTelemetry;
 import com.battle.code.repository.GameMatchRepository;
 import com.battle.code.repository.MatchPlayerRepository;
@@ -51,9 +54,8 @@ class MatchServiceTest {
         service = new MatchService(
                 matchRepository,
                 userRepository,
-                new ObjectMapper(),
                 MatchTelemetry.noOp(),
-                sensitiveDataService
+                new MatchPersistenceMapper(new ObjectMapper(), sensitiveDataService)
         );
     }
 
@@ -61,7 +63,7 @@ class MatchServiceTest {
     void aiResultPersistsMapPlayersAndReplayAsOneAggregate() {
         User user = User.builder().id(7L).username("player").build();
         when(userRepository.findById(7L)).thenReturn(Optional.of(user));
-        MatchExecutionResultDto result = result();
+        MatchExecutionResult result = result();
 
         service.saveMatchResult(
                 7L, "match-1", result, "code", "python", "easy",
@@ -72,7 +74,11 @@ class MatchServiceTest {
         verify(matchRepository).saveAndFlush(captor.capture());
         GameMatch saved = captor.getValue();
         assertThat(saved.getMapData()).isEqualTo("{\"walls\":[],\"coins\":[]}");
+        assertThat(saved.getResultReason()).isEqualTo(MatchResultReason.SCORE);
         assertThat(saved.getPlayers()).hasSize(2);
+        assertThat(saved.getPlayers())
+                .extracting(player -> player.getPlayerIndex() + ":" + player.getResult())
+                .containsExactlyInAnyOrder("p1:" + MatchOutcome.WIN, "p2:" + MatchOutcome.LOSE);
         assertThat(saved.getPlayers())
                 .allSatisfy(player -> assertThat(player.getSubmittedCode())
                         .startsWith("cca:v1:")
@@ -108,10 +114,10 @@ class MatchServiceTest {
         )).doesNotThrowAnyException();
     }
 
-    private MatchExecutionResultDto result() {
-        return new MatchExecutionResultDto(
-                null, "p1", "score", null, Map.of("p1", 3, "p2", 1), 1,
-                List.of(), null, null
+    private MatchExecutionResult result() {
+        return new MatchExecutionResult(
+                MatchWinner.P1, MatchResultReason.SCORE, null,
+                Map.of("p1", 3, "p2", 1), 1, List.of(), null, null
         );
     }
 }

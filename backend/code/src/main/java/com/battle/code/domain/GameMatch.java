@@ -30,6 +30,10 @@ public class GameMatch {
     @Column(nullable = false)
     private String mode; // AI, PVP
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 64)
+    private MatchResultReason resultReason;
+
     @Column(nullable = false, columnDefinition = "TEXT")
     private String mapData; // 맵 초기 상태 (JSON)
 

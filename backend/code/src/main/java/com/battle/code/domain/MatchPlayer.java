@@ -34,8 +34,9 @@ public class MatchPlayer {
     @Column(nullable = false)
     private String playerIndex; // "p1", "p2"
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private String result; // WIN, LOSE, DRAW
+    private MatchOutcome result;
 
     @Column(nullable = false)
     private Integer score;

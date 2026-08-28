@@ -4,9 +4,11 @@ import com.battle.code.dto.CompileResultDto;
 import com.battle.code.dto.MatchExecutionResultDto;
 import com.battle.code.dto.RunRequestDto;
 import com.battle.code.dto.StartMatchResponseDto;
+import com.battle.code.domain.MatchExecutionResult;
 import com.battle.code.observability.MatchLogContext;
 import com.battle.code.service.LandGrabService;
 import com.battle.code.service.MatchRunOutcome;
+import com.battle.code.service.MatchExecutionResultMapper;
 import com.battle.code.service.MatchService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -66,7 +68,7 @@ public class LandGrabMatchController {
                 request.getLanguage(),
                 request.getDifficulty()
         );
-        MatchExecutionResultDto result = outcome.result();
+        MatchExecutionResult result = outcome.result();
 
         log.debug("[LAND_GRAB_RUN] Winner={}, turns={}", result.winner(), result.totalTurns());
 
@@ -91,7 +93,7 @@ public class LandGrabMatchController {
                     userId, request.getMatchId(), exception);
         }
 
-        return ResponseEntity.ok(result);
+        return ResponseEntity.ok(MatchExecutionResultMapper.toApi(result));
     }
 
     @PostMapping("/compile")

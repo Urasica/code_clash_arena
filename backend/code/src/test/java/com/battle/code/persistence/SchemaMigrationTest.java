@@ -21,7 +21,7 @@ class SchemaMigrationTest {
 
     @Test
     void migrationsCreateTheCompleteSchemaAndSensitiveDataLifecycle() {
-        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("3");
+        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("4");
         Integer domainTableCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM information_schema.tables " +
                         "WHERE table_schema = 'public' " +
@@ -49,5 +49,15 @@ class SchemaMigrationTest {
                 Integer.class
         );
         assertThat(purgeColumnCount).isEqualTo(1);
+
+        Integer resultReasonColumnCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.columns " +
+                        "WHERE table_schema = 'public' " +
+                        "AND table_name = 'game_match' " +
+                        "AND column_name = 'result_reason' " +
+                        "AND is_nullable = 'NO'",
+                Integer.class
+        );
+        assertThat(resultReasonColumnCount).isEqualTo(1);
     }
 }
