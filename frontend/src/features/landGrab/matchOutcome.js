@@ -3,10 +3,11 @@ const DEFEAT_COLOR = 'var(--danger)';
 
 export const getMatchOutcome = (gameData, playerRole) => {
   if (gameData.reason === 'OPPONENT_DISCONNECTED') {
+    const wonByDisconnect = gameData.winner == null || gameData.winner === playerRole;
     return {
-      title: 'VICTORY',
-      color: VICTORY_COLOR,
-      reason: 'OPPONENT DISCONNECTED',
+      title: wonByDisconnect ? 'VICTORY' : 'DEFEAT',
+      color: wonByDisconnect ? VICTORY_COLOR : DEFEAT_COLOR,
+      reason: gameData.reason,
     };
   }
 
@@ -21,9 +22,8 @@ export const getMatchOutcome = (gameData, playerRole) => {
     color = '#aaa';
   }
 
-  const reason = gameData.p1_error || gameData.p2_error
-    ? 'RUNTIME ERROR'
-    : gameData.reason || 'MATCH COMPLETED';
+  const reason = gameData.reason
+    || (gameData.p1_error || gameData.p2_error ? 'RUNTIME_ERROR' : 'MATCH_COMPLETED');
 
   return { title, color, reason };
 };
