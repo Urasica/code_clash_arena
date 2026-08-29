@@ -4,7 +4,9 @@ import com.battle.code.dto.CompileResultDto;
 import com.battle.code.dto.LandGrabMapDto;
 import com.battle.code.dto.MatchExecutionResultDto;
 import com.battle.code.dto.StartMatchResponseDto;
+import com.battle.code.domain.MatchExecutionResult;
 import com.battle.code.execution.DockerMatchExecutor;
+import com.battle.code.execution.DockerExecutionResult;
 import com.battle.code.execution.MatchWorkspaceManager;
 import com.battle.code.execution.WorkspaceLeaseService;
 import com.battle.code.execution.WorkspaceLeaseService.WorkspaceStatus;
@@ -25,10 +27,6 @@ import java.util.UUID;
 public class LandGrabService {
 
     private static final String GAME_TYPE = "land_grab";
-    private static final int INIT_TIMEOUT_SECONDS = 15;
-    private static final int COMPILE_TIMEOUT_SECONDS = 20;
-    private static final int RUN_TIMEOUT_SECONDS = 40;
-
     private final CodeTemplateManager templateManager;
     private final ObjectMapper objectMapper;
     private final DockerMatchExecutor dockerExecutor;
@@ -65,8 +63,8 @@ public class LandGrabService {
     private StartMatchResponseDto initializeMap(String matchId, Path matchDir) throws IOException, InterruptedException {
         Files.createDirectories(matchDir);
         String output = dockerExecutor.execute(
-                matchDir, GAME_TYPE, "init", false, false, INIT_TIMEOUT_SECONDS
-        );
+                matchDir, GAME_TYPE, "init", false, false
+        ).output();
 
         if (output.isBlank()) {
             throw new IOException("Docker init output is empty.");
@@ -95,8 +93,8 @@ public class LandGrabService {
         savePlayerCode(matchDir, "p1", language, userCode);
 
         String output = dockerExecutor.execute(
-                matchDir, GAME_TYPE, "compile", false, true, COMPILE_TIMEOUT_SECONDS
-        );
+                matchDir, GAME_TYPE, "compile", false, true
+        ).output();
         return objectMapper.readValue(output, CompileResultDto.class);
     }
 
@@ -119,11 +117,13 @@ public class LandGrabService {
             Files.createDirectories(aiDir);
             Files.writeString(aiDir.resolve("p2.py"), aiCode, StandardCharsets.UTF_8);
 
-            String jsonOutput = dockerExecutor.execute(
-                    matchDir, GAME_TYPE, "run", true, true, RUN_TIMEOUT_SECONDS
+            DockerExecutionResult execution = dockerExecutor.execute(
+                    matchDir, GAME_TYPE, "run", true, true
             );
             return new MatchRunOutcome(
-                    objectMapper.readValue(jsonOutput, MatchExecutionResultDto.class),
+                    MatchExecutionResultMapper.fromEngine(
+                            objectMapper.readValue(execution.output(), MatchExecutionResultDto.class)
+                    ).withExecutionMetadata(execution.metadata()),
                     mapDataJson
             );
         } finally {
@@ -136,7 +136,7 @@ public class LandGrabService {
     }
 
     // PvP 매치 실행
-    public MatchExecutionResultDto runPvPMatch(String matchId, String p1Code, String p1Lang, String p2Code, String p2Lang, String mapDataJson) throws IOException, InterruptedException {
+    public MatchExecutionResult runPvPMatch(String matchId, String p1Code, String p1Lang, String p2Code, String p2Lang, String mapDataJson) throws IOException, InterruptedException {
         Path matchDir = workspaceManager.resolve(matchId);
         if (!Files.exists(matchDir)) Files.createDirectories(matchDir);
 
@@ -148,12 +148,18 @@ public class LandGrabService {
             savePlayerCode(matchDir, "p1", p1Lang, p1Code);
             savePlayerCode(matchDir, "p2", p2Lang, p2Code);
 
-            String jsonOutput = dockerExecutor.execute(
-                    matchDir, GAME_TYPE, "run", true, true, RUN_TIMEOUT_SECONDS
+            DockerExecutionResult execution = dockerExecutor.execute(
+                    matchDir, GAME_TYPE, "run", true, true
             );
-            log.debug("Docker result received for match {} ({} bytes)", matchId, jsonOutput.length());
+            log.debug(
+                    "Docker result received for match {} ({} bytes)",
+                    matchId,
+                    execution.output().length()
+            );
 
-            return objectMapper.readValue(jsonOutput, MatchExecutionResultDto.class);
+            return MatchExecutionResultMapper.fromEngine(
+                    objectMapper.readValue(execution.output(), MatchExecutionResultDto.class)
+            ).withExecutionMetadata(execution.metadata());
         } finally {
             workspaceManager.delete(matchDir);
         }

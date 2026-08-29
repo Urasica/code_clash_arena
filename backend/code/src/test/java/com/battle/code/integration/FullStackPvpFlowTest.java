@@ -160,7 +160,10 @@ class FullStackPvpFlowTest extends InfrastructureIntegrationTest {
                 Integer.class, matchId
         )).isEqualTo(2);
         assertThat(jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM game_match WHERE match_uuid = ? AND map_data IS NOT NULL",
+                "SELECT COUNT(*) FROM game_match WHERE match_uuid = ? AND map_data IS NOT NULL " +
+                        "AND result_reason <> 'LEGACY' " +
+                        "AND engine_digest LIKE '%sha256:%' " +
+                        "AND engine_policy_version = 'm3-v1'",
                 Integer.class, matchId
         )).isEqualTo(1);
     }

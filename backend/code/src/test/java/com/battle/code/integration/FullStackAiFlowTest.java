@@ -129,7 +129,9 @@ class FullStackAiFlowTest extends InfrastructureIntegrationTest {
         assertThat(run.getBody().logs()).isNotEmpty();
 
         assertThat(jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM game_match WHERE match_uuid = ? AND map_data IS NOT NULL",
+                "SELECT COUNT(*) FROM game_match WHERE match_uuid = ? AND map_data IS NOT NULL " +
+                        "AND engine_digest LIKE '%sha256:%' " +
+                        "AND engine_policy_version = 'm3-v1'",
                 Integer.class, matchId
         )).isEqualTo(1);
         assertThat(jdbcTemplate.queryForObject(

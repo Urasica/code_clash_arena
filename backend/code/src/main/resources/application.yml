@@ -30,13 +30,24 @@ spring:
 cca:
   frontend-url: ${FRONTEND_URL:http://localhost:3000}
   engine:
-    image: ${ENGINE_IMAGE:code-battle-engine}
+    image: ${ENGINE_IMAGE:code-battle-engine:latest}
     readiness-timeout: ${ENGINE_READINESS_TIMEOUT:3s}
     workspace: ${ENGINE_WORKSPACE:temp}
     workspace-cleanup-enabled: ${ENGINE_WORKSPACE_CLEANUP_ENABLED:true}
     workspace-idle-ttl: ${ENGINE_WORKSPACE_IDLE_TTL:30m}
     workspace-cleanup-initial-delay: ${ENGINE_WORKSPACE_CLEANUP_INITIAL_DELAY:1m}
     workspace-cleanup-interval: ${ENGINE_WORKSPACE_CLEANUP_INTERVAL:5m}
+    policy:
+      version: ${ENGINE_POLICY_VERSION:m3-v1}
+      cpus: ${ENGINE_CPUS:0.5}
+      memory: ${ENGINE_MEMORY:512m}
+      pids-limit: ${ENGINE_PIDS_LIMIT:128}
+      temp-size: ${ENGINE_TEMP_SIZE:64m}
+      players-size: ${ENGINE_PLAYERS_SIZE:128m}
+      max-output-bytes: ${ENGINE_MAX_OUTPUT_BYTES:8388608}
+      init-timeout: ${ENGINE_INIT_TIMEOUT:15s}
+      compile-timeout: ${ENGINE_COMPILE_TIMEOUT:20s}
+      run-timeout: ${ENGINE_RUN_TIMEOUT:40s}
   match:
     queue-poll-interval: ${MATCH_QUEUE_POLL_INTERVAL:1s}
     reconnect-grace: ${MATCH_RECONNECT_GRACE:5s}

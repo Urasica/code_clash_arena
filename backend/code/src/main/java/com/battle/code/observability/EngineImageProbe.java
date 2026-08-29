@@ -14,7 +14,7 @@ public class EngineImageProbe {
     private final Duration timeout;
 
     public EngineImageProbe(
-            @Value("${cca.engine.image:code-battle-engine}") String engineImage,
+            @Value("${cca.engine.image:code-battle-engine:latest}") String engineImage,
             @Value("${cca.engine.readiness-timeout:3s}") Duration timeout
     ) {
         this.engineImage = engineImage;
@@ -24,7 +24,7 @@ public class EngineImageProbe {
     public ProbeResult check() {
         Process process = null;
         try {
-            process = new ProcessBuilder("docker", "image", "inspect", engineImage)
+            process = new ProcessBuilder("docker", "inspect", "--type", "image", engineImage)
                     .redirectOutput(ProcessBuilder.Redirect.DISCARD)
                     .redirectError(ProcessBuilder.Redirect.DISCARD)
                     .start();

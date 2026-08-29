@@ -1,9 +1,9 @@
 package com.battle.code.service;
 
-import com.battle.code.dto.MatchExecutionResultDto;
+import com.battle.code.domain.MatchExecutionResult;
 
 public record MatchRunOutcome(
-        MatchExecutionResultDto result,
+        MatchExecutionResult result,
         String mapDataJson
 ) {
 }

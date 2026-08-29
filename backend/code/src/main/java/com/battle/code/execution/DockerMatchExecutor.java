@@ -23,52 +23,68 @@ import java.util.concurrent.TimeUnit;
 @Component
 public class DockerMatchExecutor {
 
-    private static final int MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
-
     private final String engineImage;
     private final MatchTelemetry telemetry;
+    private final EnginePolicyProperties policy;
+    private final EngineMetadataProvider metadataProvider;
 
     @Autowired
     public DockerMatchExecutor(
-            @Value("${cca.engine.image:code-battle-engine}") String engineImage,
-            MatchTelemetry telemetry
+            @Value("${cca.engine.image:code-battle-engine:latest}") String engineImage,
+            MatchTelemetry telemetry,
+            EnginePolicyProperties policy,
+            EngineMetadataProvider metadataProvider
     ) {
         this.engineImage = engineImage;
         this.telemetry = telemetry;
+        this.policy = policy;
+        this.metadataProvider = metadataProvider;
     }
 
     public DockerMatchExecutor(String engineImage) {
-        this(engineImage, MatchTelemetry.noOp());
+        this(
+                engineImage,
+                MatchTelemetry.noOp(),
+                new EnginePolicyProperties(),
+                EngineMetadataProvider.fixed(
+                        engineImage, "sha256:" + "0".repeat(64), "test-v1"
+                )
+        );
     }
 
-    public String execute(
+    public DockerExecutionResult execute(
             Path matchDir,
             String gameType,
             String mode,
             boolean mountData,
-            boolean mountPlayers,
-            int timeoutSeconds
+            boolean mountPlayers
     ) throws IOException, InterruptedException {
         long startedAt = System.nanoTime();
         String outcome = "failure";
         try (MatchLogContext.Scope ignored = MatchLogContext.open(matchDir.getFileName().toString())) {
-            Process process = createProcess(matchDir, gameType, mode, mountData, mountPlayers).start();
+            EngineExecutionSnapshot snapshot = metadataProvider.resolve();
+            Process process = createProcess(
+                    matchDir, gameType, mode, mountData, mountPlayers, snapshot.executionImage()
+            ).start();
             CompletableFuture<StreamCapture> stdoutFuture = captureAsync(process.getInputStream());
             CompletableFuture<StreamCapture> stderrFuture = captureAsync(process.getErrorStream());
 
-            boolean finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
+            Duration timeout = policy.timeoutFor(mode);
+            boolean finished = process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
             if (!finished) {
                 process.destroyForcibly();
                 process.waitFor(2, TimeUnit.SECONDS);
                 outcome = "timeout";
-                throw new IOException("Docker execution timed out after " + timeoutSeconds + " seconds.");
+                throw new IOException("Docker execution timed out after " + timeout + ".");
             }
 
             StreamCapture stdout = awaitCapture(stdoutFuture);
             StreamCapture stderr = awaitCapture(stderrFuture);
             if (stdout.truncated() || stderr.truncated()) {
                 outcome = "output_limit";
-                throw new IOException("Docker output exceeded " + MAX_OUTPUT_BYTES + " bytes.");
+                throw new IOException(
+                        "Docker output exceeded " + policy.getMaxOutputBytes() + " bytes."
+                );
             }
 
             if (process.exitValue() != 0) {
@@ -77,7 +93,7 @@ public class DockerMatchExecutor {
                 throw new IOException("Docker execution failed: " + stderr.text());
             }
             outcome = "success";
-            return stdout.text().trim();
+            return new DockerExecutionResult(stdout.text().trim(), snapshot.metadata());
         } catch (InterruptedException exception) {
             outcome = "interrupted";
             throw exception;
@@ -98,16 +114,27 @@ public class DockerMatchExecutor {
             boolean mountData,
             boolean mountPlayers
     ) {
+        return createProcess(matchDir, gameType, mode, mountData, mountPlayers, engineImage);
+    }
+
+    ProcessBuilder createProcess(
+            Path matchDir,
+            String gameType,
+            String mode,
+            boolean mountData,
+            boolean mountPlayers,
+            String executionImage
+    ) {
         String hostPath = matchDir.toString().replace("\\", "/");
         List<String> command = new ArrayList<>(List.of(
                 "docker", "run", "--rm",
                 "--network", "none",
-                "--cpus", "0.5",
-                "--memory", "512m",
-                "--pids-limit", "128",
+                "--cpus", policy.getCpus().stripTrailingZeros().toPlainString(),
+                "--memory", policy.getMemory(),
+                "--pids-limit", String.valueOf(policy.getPidsLimit()),
                 "--read-only",
-                "--tmpfs", "/tmp:rw,noexec,nosuid,size=64m",
-                "--tmpfs", "/run/players:rw,exec,nosuid,nodev,size=128m",
+                "--tmpfs", "/tmp:rw,noexec,nosuid,size=" + policy.getTempSize(),
+                "--tmpfs", "/run/players:rw,exec,nosuid,nodev,size=" + policy.getPlayersSize(),
                 "--cap-drop", "ALL",
                 "--cap-add", "CHOWN",
                 "--cap-add", "DAC_READ_SEARCH",
@@ -123,7 +150,7 @@ public class DockerMatchExecutor {
             command.addAll(List.of("-v", hostPath + ":/app/players"));
         }
         command.addAll(List.of(
-                engineImage,
+                executionImage,
                 "python3", "referee.py", gameType, mode
         ));
         return new ProcessBuilder(command);
@@ -137,7 +164,7 @@ public class DockerMatchExecutor {
                 boolean truncated = false;
                 int read;
                 while ((read = stream.read(buffer)) != -1) {
-                    int remaining = MAX_OUTPUT_BYTES - output.size();
+                    int remaining = policy.getMaxOutputBytes() - output.size();
                     if (remaining > 0) {
                         output.write(buffer, 0, Math.min(read, remaining));
                     }

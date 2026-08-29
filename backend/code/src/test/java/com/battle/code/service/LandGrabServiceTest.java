@@ -1,6 +1,8 @@
 package com.battle.code.service;
 
 import com.battle.code.execution.DockerMatchExecutor;
+import com.battle.code.execution.DockerExecutionResult;
+import com.battle.code.execution.EngineExecutionMetadata;
 import com.battle.code.execution.MatchWorkspaceManager;
 import com.battle.code.execution.WorkspaceLeaseService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -56,8 +58,8 @@ class LandGrabServiceTest {
                 new MatchWorkspaceManager(tempDir.toString()),
                 leaseService
         );
-        when(executor.execute(any(), eq("land_grab"), eq("init"), eq(false), eq(false), eq(15)))
-                .thenReturn("{\"walls\":[[1,2]],\"coins\":[[3,4]]}");
+        when(executor.execute(any(), eq("land_grab"), eq("init"), eq(false), eq(false)))
+                .thenReturn(execution("{\"walls\":[[1,2]],\"coins\":[[3,4]]}"));
 
         var response = mapService.startMatch(42L);
 
@@ -78,13 +80,20 @@ class LandGrabServiceTest {
                 new MatchWorkspaceManager(tempDir.toString()),
                 leaseService
         );
-        when(executor.execute(any(), eq("land_grab"), eq("init"), eq(false), eq(false), eq(15)))
-                .thenReturn("{\"error\":\"bind mount is not writable\"}");
+        when(executor.execute(any(), eq("land_grab"), eq("init"), eq(false), eq(false)))
+                .thenReturn(execution("{\"error\":\"bind mount is not writable\"}"));
 
         assertThatThrownBy(() -> mapService.startMatch(42L))
                 .isInstanceOf(java.io.IOException.class)
                 .hasMessageContaining("Docker init failed");
         assertThat(tempDir).isEmptyDirectory();
+    }
+
+    private DockerExecutionResult execution(String output) {
+        return new DockerExecutionResult(
+                output,
+                new EngineExecutionMetadata("sha256:" + "a".repeat(64), "test-v1")
+        );
     }
 
 }
