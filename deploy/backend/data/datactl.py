@@ -245,6 +245,22 @@ def validate_configuration(args: argparse.Namespace, *, emit: bool = True) -> No
         volume.get("type") == "volume" for volume in redis_volumes
     ):
         fail("Redis must remain ephemeral with a read-only root filesystem and no volume.")
+    redis_entrypoint = services["redis"].get("entrypoint", [])
+    redis_command = services["redis"].get("command", [])
+    redis_cap_add = set(services["redis"].get("cap_add", []))
+    redis_cap_drop = set(services["redis"].get("cap_drop", []))
+    redis_volume_targets = {volume.get("target") for volume in redis_volumes}
+    if (
+        redis_entrypoint != ["sh", "/usr/local/bin/cca-redis-entrypoint"]
+        or redis_command != [
+            "redis-server", "/usr/local/etc/redis/redis.conf",
+            "--aclfile", "/tmp/cca-redis-secrets/redis.acl",
+        ]
+        or redis_cap_drop != {"ALL"}
+        or redis_cap_add != {"CHOWN", "DAC_READ_SEARCH", "SETGID", "SETUID"}
+        or "/usr/local/bin/cca-redis-entrypoint" not in redis_volume_targets
+    ):
+        fail("Redis must stage protected Compose secrets before dropping privileges.")
     if emit:
         print(json.dumps({"result": "valid", "project": args.project, "redis_recovery": "empty-restart"}))
 

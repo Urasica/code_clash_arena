@@ -37,7 +37,7 @@ python deploy/backend/data/datactl.py validate-configuration --project cca-data-
 python deploy/backend/data/datactl.py start --project cca-data-production --secrets /etc/code-clash-arena/data-secrets
 ```
 
-Compose secrets는 host 파일을 `/run/secrets`에 read-only로 제공하며 환경 변수에 password 값을 넣지 않는다. 도구는 매 실행마다 15개 파일의 형식·상호 일치, 역할 credential 중복, Redis ACL 일치를 확인하고 Linux에서는 group/other 권한이 열려 있으면 중단한다. 앱용 네 파일은 생성 경로의 `backend/` 아래에 따로 두므로 배포 시 이 하위 경로만 앱의 `/run/secrets/backend/`에 mount하거나 `CCA_DATA_SECRETS_DIR`로 지정한다. DB root·migration·backup·health 파일이 있는 상위 경로를 앱 사용자에게 공개하지 않는다. 환경 변수를 사용하면 동일한 전용 app 계정을 주입한다. [Docker Compose secrets](https://docs.docker.com/compose/how-tos/use-secrets/)
+Compose secrets는 host 파일을 `/run/secrets`에 read-only로 제공하며 환경 변수에 password 값을 넣지 않는다. Linux Compose의 file secret은 host의 UID·mode를 그대로 bind-mount하므로 Redis 시작 wrapper가 ACL과 앱 password만 `/tmp` tmpfs의 `redis:root`, `0440` 파일로 복사한 뒤 공식 entrypoint를 통해 Redis 사용자로 권한을 낮춘다. 이 준비 단계에만 `DAC_READ_SEARCH`·`CHOWN`이 필요하며 Redis 서버 프로세스에는 권한 저하 뒤 capability가 남지 않는다. 도구는 매 실행마다 15개 파일의 형식·상호 일치, 역할 credential 중복, Redis ACL 일치를 확인하고 Linux에서는 group/other 권한이 열려 있으면 중단한다. 앱용 네 파일은 생성 경로의 `backend/` 아래에 따로 두므로 배포 시 이 하위 경로만 앱의 `/run/secrets/backend/`에 mount하거나 `CCA_DATA_SECRETS_DIR`로 지정한다. DB root·migration·backup·health 파일이 있는 상위 경로를 앱 사용자에게 공개하지 않는다. 환경 변수를 사용하면 동일한 전용 app 계정을 주입한다. [Docker Compose secrets](https://docs.docker.com/compose/how-tos/use-secrets/)
 
 `prod` 기동 검사는 app 계정, host-local URL, MySQL TLS/public-key retrieval 차단, Flyway 비활성화, Redis ACL 계정, management loopback을 강제한다. Migration은 app 프로세스에 DDL 자격증명을 주지 않는 별도 OPS-02 단계에서 구현한다.
 

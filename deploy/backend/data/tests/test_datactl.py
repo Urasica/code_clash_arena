@@ -75,6 +75,23 @@ class DataControlTest(unittest.TestCase):
             with self.assertRaises(datactl.DataOperationError):
                 datactl.validate_secret_bundle(target)
 
+    def test_redis_entrypoint_stages_secrets_before_dropping_privileges(self):
+        entrypoint = (DATA_ROOT / "redis" / "entrypoint.sh").read_text(encoding="utf-8")
+        redis_client = (DATA_ROOT / "health" / "redis-cli.sh").read_text(encoding="utf-8")
+        compose = (DATA_ROOT / "compose.yaml").read_text(encoding="utf-8")
+
+        acl_copy = 'cp /run/secrets/redis-acl "$runtime_dir/redis.acl"'
+        password_copy = 'cp /run/secrets/redis-app-password "$runtime_dir/redis-app-password"'
+        privilege_drop = 'exec /usr/local/bin/docker-entrypoint.sh "$@"'
+        self.assertIn(acl_copy, entrypoint)
+        self.assertIn(password_copy, entrypoint)
+        self.assertLess(entrypoint.index(acl_copy), entrypoint.index(privilege_drop))
+        self.assertLess(entrypoint.index(password_copy), entrypoint.index(privilege_drop))
+        self.assertIn("chown redis:root", entrypoint)
+        self.assertIn("/tmp/cca-redis-secrets/redis-app-password", redis_client)
+        self.assertNotIn("/run/secrets/redis-app-password", redis_client)
+        self.assertIn('"--aclfile", "/tmp/cca-redis-secrets/redis.acl"', compose)
+
     def test_upload_rejects_plaintext_wrong_region_and_object_name_before_cli(self):
         with tempfile.TemporaryDirectory() as temporary:
             source = Path(temporary) / "backup.sql"

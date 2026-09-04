@@ -50,7 +50,8 @@ services:
   redis:
     image: ${REDIS_IMAGE:-redis:7.4-alpine}
     restart: unless-stopped
-    command: ["redis-server", "/usr/local/etc/redis/redis.conf", "--aclfile", "/run/secrets/redis-acl"]
+    entrypoint: ["sh", "/usr/local/bin/cca-redis-entrypoint"]
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf", "--aclfile", "/tmp/cca-redis-secrets/redis.acl"]
     ports:
       - name: redis-loopback
         target: 6379
@@ -59,6 +60,7 @@ services:
         protocol: tcp
     volumes:
       - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+      - ./redis/entrypoint.sh:/usr/local/bin/cca-redis-entrypoint:ro
       - ./health/redis-health.sh:/usr/local/bin/cca-redis-health:ro
       - ./health/redis-cli.sh:/usr/local/bin/cca-redis-cli:ro
     secrets:
@@ -75,7 +77,7 @@ services:
     tmpfs: [/tmp]
     security_opt: ["no-new-privileges:true"]
     cap_drop: ["ALL"]
-    cap_add: ["SETGID", "SETUID"]
+    cap_add: ["CHOWN", "DAC_READ_SEARCH", "SETGID", "SETUID"]
     labels:
       io.codeclash.data-role: redis
       io.codeclash.data-purpose: ${DATA_PURPOSE:-service}

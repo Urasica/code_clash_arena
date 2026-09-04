@@ -165,9 +165,10 @@ ARM-01 이전 `.github/workflows/release-gate.yml`은 `ubuntu-latest` 한 환경
 - 권한: MySQL app·migration·backup·health 계정을 분리하고 앱 계정에서 DDL을 제거했다. Redis default 계정은 끄고 앱이 실제 사용하는 key prefix와 명령만 ACL에 허용했다. 앱에는 별도 `backend/` 경로의 app credential만 전달하고 DB root·migration·backup secret은 전달하지 않는다. `prod` 기동은 loopback DB/Redis, 전용 앱 계정, MySQL TLS, Flyway 비활성화, management loopback을 검증한다.
 - 백업/복원: `mysqldump` 출력을 평문 파일로 만들지 않고 `age` public recipient로 바로 암호화한다. OCI upload 전에 Tokyo region과 비공개 bucket·승인 compartment를 확인하며 instance principal, checksum 검증, overwrite 거부를 사용한다. 복원은 새 `cca-restore-*` project와 빈 schema에서만 허용하고 Redis 과거 상태는 복원하지 않는다.
 - 로컬 검증: Python 단위 7건, 운영 Compose 구성, 실제 MySQL 역할 거부/허용, Redis key·관리 명령 거부, 암호화 snapshot과 별도 MySQL 복원, Redis 빈 재시작을 통과했다. 백엔드 빠른 회귀 `104 pass / 6 opt-in skip`과 실제 MySQL·Redis·engine 통합 6종도 통과했다. 일회용 container·volume은 검사 종료 후 남지 않았다.
-- 게이트: DATA 단위 검사를 기존 Ubuntu/Windows PR Gate에, 일회용 백업·복원 검사를 Release Gate에 연결했다. 변경한 원격 workflow는 아직 실행하지 않았다.
+- 게이트: DATA 단위 검사를 기존 Ubuntu/Windows PR Gate에, 일회용 백업·복원 검사를 Release Gate에 연결했다.
+- 원격 1차 확인: PR #21의 Release Gate `33855510504`에서 amd64·arm64가 모두 Redis `unhealthy`로 중단됐다. Linux Compose가 외부 secret의 runner UID·`0600` mode를 유지해 권한을 낮춘 Redis가 ACL을 읽지 못한 것이 원인이었다. 시작 wrapper가 ACL과 앱 password만 `/tmp` tmpfs의 `redis:root`, `0440`으로 준비한 뒤 공식 entrypoint로 권한을 낮추도록 교정했다. 동일 UID/mode의 Linux volume 검증에서 인증 `PONG`, Redis UID 999, 유효 capability 0을 확인했으며 원격 재실행은 아직 하지 않았다.
 - 남은 조건: ARM-01 이후 실제 Private VM에서 앱 연결과 Edge/인터넷 차단을 같은 시점의 대조군으로 확인한다. Tokyo Object Storage에 올린 호스트 밖 암호문을 새 복구 환경으로 내려받아 schema·행·민감 payload·Flyway 계약을 확인해야 한다.
-- 상태: 구현 및 로컬 검증 완료, 실제 VM/Object Storage 검증 대기. `DONE`이 아니며 완료 커밋·push 없음.
+- 상태: 구현과 Release Gate 교정의 로컬 검증 완료, 원격 Gate 재검증과 실제 VM/Object Storage 검증 대기. `DONE`이 아니다. 최초 구현 커밋은 `0b0673b`이며 1차 묶음으로 push했다.
 
 ## ARM-01 진행 기록 — 2026-09-04
 
@@ -177,5 +178,6 @@ ARM-01 이전 `.github/workflows/release-gate.yml`은 `ubuntu-latest` 한 환경
 - 호환성: Testcontainers Toxiproxy를 amd64/arm64 manifest가 있는 2.12.0으로 고정했다. frontend unit/build, backend test/package, MySQL·Redis·Toxiproxy 통합, 다섯 언어와 보안 corpus, 실제 jar+Compose 브라우저 흐름을 architecture마다 실행한다.
 - 산출물 증거: source SHA, runner·Docker architecture, frontend 정적 파일과 backend jar SHA-256, engine image inspect, Surefire·Playwright report를 architecture별 artifact에 보존한다. registry digest 기반 승격과 실제 proxy 배포 artifact 연결은 OPS-02에서 이어간다.
 - 로컬 검증: x64에서 actionlint, frontend 19 unit/build, backend `110 tests / 6 opt-in skip`, 실제 통합 `6 pass / 0 skip`, strict engine `8 pass / 0 skip`, Chromium `3 pass`를 확인했다. Docker image가 없는 strict engine 실행이 실제 오류로 차단되는 것도 확인했다.
+- 원격 1차 확인: PR Gate `33855499166`의 두 필수 job은 frontend audit endpoint가 5분 뒤 동일하게 npm registry `503 Service Unavailable`을 반환해 실패했다. 취약점 검출 결과가 아니므로 audit을 제거하거나 성공으로 우회하지 않고 서비스 복구 뒤 재실행한다. Release Gate의 두 architecture는 위 DATA-03 Redis secret 권한 문제에서 동일하게 중단돼 native ARM 전체 계약은 아직 판정할 수 없다.
 - 남은 조건: GitHub-hosted `ubuntu-24.04-arm` job을 실제 실행해 browser binary와 모든 container가 native ARM에서 통과하는지 확인해야 한다. 이 증거는 OCI ARM VM 검증과 동일하지 않으며 실제 대상 OS·Docker·네트워크는 REL-02에서 다시 확인한다.
-- 상태: workflow와 로컬 x64 계약 준비, native ARM 원격 검증 대기. `DONE`이 아니며 push 없음.
+- 상태: workflow와 로컬 x64 계약 준비, Gate 1차 실패 원인 교정 후 native ARM 원격 재검증 대기. `DONE`이 아니다. 최초 구현 커밋은 `7d4dda9`이며 1차 묶음으로 push했다.
