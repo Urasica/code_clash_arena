@@ -132,7 +132,6 @@ turn snapshot은 action, position, alive, coins, walls, board, scores, board_siz
 - 심판과 플레이어는 같은 container PID namespace를 사용하므로 커널 수준의 완전한 container 분리는 아니며, UID·파일 mode·capability 경계로 상호 접근을 차단한다.
 - Redis가 장시간 중단되면 새 AI workspace lease를 만들 수 없으므로 `/start`도 실패하고 생성한 폴더를 되돌린다.
 - 실행 중 사용자 코드는 match workspace의 파일로 존재하고 종료·TTL 정리 시 삭제된다. DB로 영속화되는 code/replay는 저장 경계에서 암호화되지만 workspace 자체는 별도 저장 암호화를 사용하지 않는다.
-- container 생성 비용과 동시 실행 capacity가 측정되지 않았다.
 - engine 자체는 JSON 프로세스 계약이지만 백엔드 경계에서 명시적 DTO와 직렬화 계약 테스트로 검증한다.
 
-후속 용량 측정과 container 재사용 여부는 M4 `SCALE-01`로 관리한다. DB 민감 payload 정책은 [민감 데이터 수명 설계](09-sensitive-data-lifecycle.md)를 따른다.
+후속 ARM 실행 게이트와 배포 경계는 [M4](../roadmap/M4-modernization-scale.md)에서 관리한다. DB 민감 payload 정책은 [민감 데이터 수명 설계](09-sensitive-data-lifecycle.md)를 따른다.

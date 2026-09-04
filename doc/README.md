@@ -41,6 +41,7 @@ flowchart LR
 | 관측성·장애 대응 | [07-observability.md](07-observability.md) | correlation ID, JSON 로그, metric, readiness, alert |
 | 빌드·의존성 | [08-dependency-build.md](08-dependency-build.md) | 지원 버전, lockfile, 의존성 예외, 정기 갱신 gate |
 | 민감 데이터 수명 | [09-sensitive-data-lifecycle.md](09-sensitive-data-lifecycle.md) | 제출 코드·replay 암호화, 보존·삭제, 접근 감사, 키 교체 |
+| 네트워크 구성 | [10-network-infrastructure.md](10-network-infrastructure.md) | 배포와 독립적인 OCI subnet·NSG·NAT·Bastion 코드, mock/실환경 검증 구분 |
 
 ## 역할 간 의존 방향
 

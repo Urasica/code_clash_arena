@@ -1,0 +1,11 @@
+# Documentation-only values. Copy to a Git-ignored .tfvars file and replace
+# the remaining placeholders after the quota, cost and apply target are approved.
+region               = "ap-tokyo-1"
+compartment_id       = "ocid1.compartment.oc1..replace-with-approved-compartment"
+name_prefix          = "ccanettest"
+vcn_cidr             = "10.42.0.0/16"
+subnet_newbits       = 8
+bastion_client_cidrs = ["203.0.113.10/32"] # RFC5737 example; NOT a real management address.
+allow_http_redirect = false
+data_access_mode    = "host_local"
+block_nat_traffic   = false
