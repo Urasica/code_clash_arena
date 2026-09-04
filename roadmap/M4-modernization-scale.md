@@ -4,7 +4,7 @@
 - 선행: M3 DONE
 - 범위 갱신일: 2026-09-04
 - 범위 정리 브랜치: `codex/m4-subnet-plan`
-- 현재 단계: NET-01 구성과 DATA-03 운영 데이터 경계의 로컬 구현·검증. 실제 OCI plan/apply·접근·Object Storage 복구 검증과 후속 배포 기능은 아직 수행하지 않았다.
+- 현재 단계: NET-01·DATA-03 로컬 구현과 ARM-01 native gate 구성을 검증했다. 실제 OCI plan/apply·접근·Object Storage 복구, GitHub-hosted ARM 실행, 후속 배포 기능은 아직 수행하지 않았다.
 
 ## 목표와 범위
 
@@ -34,7 +34,7 @@ Public/Private Subnet, NSG, NAT Gateway, 내부 통신, 데이터 계층 접근 
 | DEV-01 | DONE | CRA에서 유지보수되는 build/test 도구로 전환 유지 | DEP-01의 Vite/Vitest, env·bundle·test·브라우저 계약 유지 |
 | NET-01 | IN_PROGRESS | 배포 프로필과 독립적인 Public/Private Subnet·NSG·IGW/NAT·관리 접근 설계, 환경별 IaC | 논리 역할·접근 행렬·라우팅을 정의하고 승인된 검증 환경에서 허용/차단을 입증. 실제 배포 매핑과 미적용 항목을 구분 |
 | DATA-03 | IN_PROGRESS | 데이터 계층의 DB·Redis 비공개화, 권한 분리, 외부 백업·복원 | 인터넷과 Edge에서 DB·Redis 직접 연결 불가. 앱 접근은 정상. 호스트 밖의 백업으로 복원 성공 |
-| ARM-01 | READY | 배포 게이트에 native Linux ARM64 실행 검증 추가 | 배포할 artifact의 ARM 호환성, 다섯 언어 실행·보안 corpus, 실제 DB/Redis 통합·브라우저 계약 통과. 누락·skip은 배포 차단 |
+| ARM-01 | IN_PROGRESS | 배포 게이트에 native Linux ARM64 실행 검증 추가 | 배포할 artifact의 ARM 호환성, 다섯 언어 실행·보안 corpus, 실제 DB/Redis 통합·브라우저 계약 통과. 누락·skip은 배포 차단 |
 | OPS-02 | READY | 루트 모노레포 관리 + 컴포넌트별 자동 CI/CD·공급망 검증 | 변경 영향에 맞는 배포만 실행. lockfile build, SBOM·image scan·signature, digest 기반 승격, migration dry-run, 단계적 배포·롤백 |
 | REL-02 | READY | 승인된 배포 프로필에서 실제 배포·연결·장애 복구 검증 | HTTPS/WSS, 쿠키 인증·AI/PvP·재연결·rollback 증거 확보. 논리 네트워크와 실제 리소스의 대응 및 미적용 항목을 명시 |
 
@@ -109,7 +109,7 @@ workflow 파일은 repository 루트의 `.github/workflows` 바로 아래에 둔
 
 ## ARM-01: 실제 ARM 실행을 배포 조건으로 추가
 
-현재 `.github/workflows/release-gate.yml`은 `ubuntu-latest` 한 환경이다. 기존 x86/Linux·Windows 지원을 없애는 대신, 배포 대상인 `linux/arm64` 검증 경로를 추가한다.
+ARM-01 이전 `.github/workflows/release-gate.yml`은 `ubuntu-latest` 한 환경이었다. 현재 로컬 구성은 기존 x86/Linux·Windows 지원을 없애지 않고 Release Gate에 배포 대상인 `linux/arm64` 검증 경로를 추가했다.
 
 1. native runner 기본 후보는 `ubuntu-24.04-arm`이다. 현재 public repository에서 사용할 수 있는 표준 ARM64 runner이며, OCI 운영 VM을 CI runner로 소비하지 않는다. 실제 job에서도 `uname -m`, Docker architecture를 확인한다. [GitHub runner 지원표](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)
 2. frontend는 lockfile 설치·unit/build를 검사하고, 배포할 proxy/runtime의 ARM 동작과 정적 artifact를 확인한다. backend는 Java build/test/package와 runtime 동작을 검사한다. host binary·base image·MySQL·Redis·Toxiproxy 등 테스트 도구까지 ARM 호환성을 확인한다.
@@ -168,3 +168,14 @@ workflow 파일은 repository 루트의 `.github/workflows` 바로 아래에 둔
 - 게이트: DATA 단위 검사를 기존 Ubuntu/Windows PR Gate에, 일회용 백업·복원 검사를 Release Gate에 연결했다. 변경한 원격 workflow는 아직 실행하지 않았다.
 - 남은 조건: ARM-01 이후 실제 Private VM에서 앱 연결과 Edge/인터넷 차단을 같은 시점의 대조군으로 확인한다. Tokyo Object Storage에 올린 호스트 밖 암호문을 새 복구 환경으로 내려받아 schema·행·민감 payload·Flyway 계약을 확인해야 한다.
 - 상태: 구현 및 로컬 검증 완료, 실제 VM/Object Storage 검증 대기. `DONE`이 아니며 완료 커밋·push 없음.
+
+## ARM-01 진행 기록 — 2026-09-04
+
+- 근거: 기존 Release Gate가 x64 한 환경에서만 실행되고 engine Docker 계약은 image가 없으면 4건을 skip해도 전체 suite가 성공할 수 있었다. 기존 Toxiproxy 2.5.0도 ARM 실행 근거가 없었다.
+- 구현: Release Gate를 기존 `ubuntu-latest` x64와 `ubuntu-24.04-arm` native ARM64 매트릭스로 확장했다. `uname -m`, Docker daemon, engine image architecture를 각 matrix 기대값과 대조하고 어느 한쪽 실패·취소도 전체 workflow 성공으로 처리하지 않는다.
+- strict 계약: Release Gate에서는 engine image·daemon 누락을 skip이 아닌 오류로 처리한다. backend 실제 통합 6개 class의 report 존재·실행 수·failure/error/skip 0을 검사하고, Chromium report도 AI HTTP·두 guest STOMP PvP를 포함한 3건과 skip/flaky 0을 요구한다.
+- 호환성: Testcontainers Toxiproxy를 amd64/arm64 manifest가 있는 2.12.0으로 고정했다. frontend unit/build, backend test/package, MySQL·Redis·Toxiproxy 통합, 다섯 언어와 보안 corpus, 실제 jar+Compose 브라우저 흐름을 architecture마다 실행한다.
+- 산출물 증거: source SHA, runner·Docker architecture, frontend 정적 파일과 backend jar SHA-256, engine image inspect, Surefire·Playwright report를 architecture별 artifact에 보존한다. registry digest 기반 승격과 실제 proxy 배포 artifact 연결은 OPS-02에서 이어간다.
+- 로컬 검증: x64에서 actionlint, frontend 19 unit/build, backend `110 tests / 6 opt-in skip`, 실제 통합 `6 pass / 0 skip`, strict engine `8 pass / 0 skip`, Chromium `3 pass`를 확인했다. Docker image가 없는 strict engine 실행이 실제 오류로 차단되는 것도 확인했다.
+- 남은 조건: GitHub-hosted `ubuntu-24.04-arm` job을 실제 실행해 browser binary와 모든 container가 native ARM에서 통과하는지 확인해야 한다. 이 증거는 OCI ARM VM 검증과 동일하지 않으며 실제 대상 OS·Docker·네트워크는 REL-02에서 다시 확인한다.
+- 상태: workflow와 로컬 x64 계약 준비, native ARM 원격 검증 대기. `DONE`이 아니며 push 없음.

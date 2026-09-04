@@ -1,4 +1,5 @@
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -119,7 +120,12 @@ def docker_is_ready():
     return result.returncode == 0
 
 
-@unittest.skipUnless(docker_is_ready(), f"Docker image {IMAGE} is not available")
+DOCKER_READY = docker_is_ready()
+if os.environ.get("CCA_REQUIRE_DOCKER_TESTS") == "true" and not DOCKER_READY:
+    raise RuntimeError(f"Required Docker image {IMAGE} is not available")
+
+
+@unittest.skipUnless(DOCKER_READY, f"Docker image {IMAGE} is not available")
 class RunnerIntegrationTest(unittest.TestCase):
 
     def docker_command(self, temp_dir, mode, include_data=False, environment=None):

@@ -39,7 +39,7 @@ abstract class InfrastructureIntegrationTest {
             .withNetworkAliases("redis");
 
     private static final ToxiproxyContainer TOXIPROXY = new ToxiproxyContainer(
-            DockerImageName.parse("ghcr.io/shopify/toxiproxy:2.5.0")
+            DockerImageName.parse("ghcr.io/shopify/toxiproxy:2.12.0")
     ).withNetwork(NETWORK);
 
     protected static final ToxiproxyContainer.ContainerProxy MYSQL_PROXY;
