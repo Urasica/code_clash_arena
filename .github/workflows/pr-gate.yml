@@ -42,6 +42,24 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Set up Terraform for network contract tests
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
+        with:
+          terraform_version: "1.13.5"
+          terraform_wrapper: false
+
+      - name: OCI network configuration tests (no cloud credentials)
+        shell: bash
+        run: |
+          set -euo pipefail
+          terraform -chdir=infra/oci/network fmt -check -recursive
+          terraform -chdir=infra/oci/network init -backend=false -input=false -lockfile=readonly
+          terraform -chdir=infra/oci/network validate -no-color
+          terraform -chdir=infra/oci/network test -no-color
+
+      - name: Data boundary unit tests (no cloud credentials)
+        run: python -m unittest discover -s deploy/backend/data/tests -p 'test_*.py' -v
+
       - name: Backend tests (Linux)
         if: runner.os != 'Windows'
         working-directory: backend/code

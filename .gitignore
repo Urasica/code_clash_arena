@@ -10,3 +10,24 @@ backend/code/logs
 backend/code/temp/
 __pycache__/
 *.pyc
+
+# Terraform cache, local environment values, state and saved plans
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfplan.*
+*.tfbackend
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+infra/oci/**/evidence/
+infra/oci/**/secrets/
+*.sql.age
+age-identity*.txt

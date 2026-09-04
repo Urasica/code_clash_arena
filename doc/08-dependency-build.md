@@ -12,6 +12,7 @@
 | Maven | 3.9.x, Wrapper 3.9.16 | `.mvn/wrapper`, Maven Enforcer |
 | Spring Boot | 3.5.16 | parent BOM이 Spring·Hibernate·Testcontainers 등 호환 버전을 관리 |
 | MySQL/Flyway | MySQL 8.4, Flyway 11.20.3 | Compose·Testcontainers·`flyway-mysql`, 실제 migrate/validate smoke |
+| 장애 주입 proxy | Toxiproxy 2.12.0, linux/amd64 + linux/arm64 | Testcontainers 실제 DB·Redis 장애·복구 |
 | JWT | JJWT 0.13.0 | API/impl/Jackson 세 모듈을 같은 property로 고정 |
 | Frontend Node | 22.22.2 이상 또는 24.15 이상 24.x, CI는 24 | `package.json` engines, Actions setup-node |
 | Frontend build/test | Vite 8.2.1, Vitest 4.1.11 | npm lockfile과 scripts |
@@ -25,6 +26,7 @@ Node 20은 지원 종료 상태라 CI 기준에서 제거했다. Node 22는 개�
 - 백엔드의 일반 라이브러리와 plugin은 Spring Boot 3.5 BOM을 우선 사용한다. 개별 버전 override는 실제 지원 문제나 독립 release cadence가 있는 경우만 둔다.
 - Flyway는 Boot 3.5.16 기본 11.7.2가 아닌 11.20.3을 명시한다. MySQL 8.4 지원 경고 제거가 근거이며 실제 DB 통합 gate가 override의 호환성을 보호한다.
 - JJWT 세 모듈은 한 property에서 같은 0.13.0을 사용한다. token 생성·검증 테스트가 공개 API 변경을 보호한다.
+- Toxiproxy 2.12.0은 같은 tag의 `linux/amd64`, `linux/arm64` manifest를 사용한다. Release Gate가 각 native architecture에서 MySQL·Redis 장애·복구를 실제 실행해 tag와 Testcontainers client 호환성을 확인한다.
 - 프론트 direct dependency는 `package.json`, 전체 해석 결과는 `package-lock.json`이 원천이다. 설치는 항상 `npm ci`로 하고 lockfile을 우회한 상위 디렉터리 module 해석을 허용하지 않는다.
 - `dompurify=3.4.13` override는 Monaco 0.56이 취약한 3.4.8을 exact dependency로 갖는 데 대한 임시 호환 예외다. Monaco가 수정 버전을 채택하면 direct/override 중복과 브라우저 editor 회귀를 확인한 뒤 제거한다.
 
@@ -37,10 +39,11 @@ pull request
   └─ Python engine rule tests
 
 release gate
-  ├─ engine image build → five-language isolation contract
-  ├─ MySQL 8.4/Flyway + Redis/Toxiproxy integration
-  ├─ backend package
-  └─ production frontend + Chromium user flow
+  ├─ x64와 native ARM64 runner·Docker·image architecture 대조
+  ├─ engine image build → five-language isolation contract (skip 불가)
+  ├─ MySQL 8.4/Flyway + Redis/Toxiproxy 2.12.0 integration (skip 불가)
+  ├─ frontend build + backend package hash 기록
+  └─ production frontend + Chromium AI HTTP·STOMP PvP user flow
 ```
 
 Vite entry는 `frontend/index.html`과 `src/index.jsx`다. JSX를 포함하는 화면 파일은 `.jsx`, 순수 API·설정·계산 코드는 `.js`를 사용한다. SockJS의 CommonJS 브라우저 호환을 위해 build 시 `global`은 표준 `globalThis`로 치환한다. Vitest는 `src/**/*.test.{js,jsx}`만 수집하고 `frontend/e2e`는 Playwright가 별도로 실행한다. E2E의 사전 build는 npm이 전달한 `npm_execpath`를 현재 Node process로 호출하므로 Windows와 Linux에서 같은 CLI를 사용한다.
@@ -69,6 +72,7 @@ Vite entry는 `frontend/index.html`과 `src/index.jsx`다. JSX를 포함하는 �
 
 - Dependabot은 vulnerability alert와 Security Update만 제공하며 정기 version update는 자동화하지 않는다. SBOM, image scan/signature, immutable artifact promotion은 아직 없고 M4 `OPS-02`에서 다룬다.
 - Ubuntu package 설치는 이미지 build 시점의 patch를 가져오므로 digest 기반 완전 재현성은 아직 보장하지 않는다. Node base는 명시적 patch tag를 사용한다.
+- ARM workflow 구성과 로컬 x64 회귀는 확인했지만 GitHub-hosted native ARM64 실행 결과는 아직 없다. OCI 대상 VM의 OS·Docker·artifact 검증은 REL-02에서 별도로 수행한다.
 - React 19, Vite/Vitest의 다음 major, Spring Boot 4는 자동 갱신 대상이 아니다.
 
 ## 공식 기준
@@ -77,5 +81,8 @@ Vite entry는 `frontend/index.html`과 `src/index.jsx`다. JSX를 포함하는 �
 - [Spring Boot 3.5 managed dependency coordinates](https://docs.spring.io/spring-boot/3.5/appendix/dependency-versions/coordinates.html)
 - [Node.js release schedule](https://nodejs.org/en/about/previous-releases)
 - [Flyway MySQL support](https://documentation.red-gate.com/flyway/reference/database-driver-reference/mysql)
+- [GitHub-hosted runner 지원표](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)
+- [Playwright ARM64 browser 지원](https://playwright.dev/docs/release-notes)
+- [Toxiproxy container package](https://github.com/Shopify/toxiproxy/pkgs/container/toxiproxy)
 - [Dependabot version update configuration](https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/secure-your-dependencies/configure-version-updates)
 - [Dependabot update 대상 제어](https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/manage-your-dependency-security/controlling-dependencies-updated)

@@ -36,11 +36,12 @@ flowchart LR
 | 인증·HTTP API | [02-auth-http-api.md](02-auth-http-api.md) | JWT 쿠키, REST 인증, CORS, 요청·오류 경계 |
 | 실시간 매칭·세션 | [03-realtime-match.md](03-realtime-match.md) | STOMP 권한, Redis queue/room/socket, 제출·disconnect |
 | 코드 실행·게임 엔진 | [04-code-execution-engine.md](04-code-execution-engine.md) | runner 합성, 작업공간, Docker 격리, Land Grab 규칙 |
-| 영속화·운영 | [05-persistence-operations.md](05-persistence-operations.md) | MySQL 모델, 결과/replay 저장, 설정, 로컬 인프라 |
+| 영속화·운영 | [05-persistence-operations.md](05-persistence-operations.md) | MySQL 모델, 결과/replay 저장, 개발 환경, 운영 DB·Redis·backup 경계 |
 | 테스트·품질 | [06-testing-quality.md](06-testing-quality.md) | 테스트 계층, 실행 명령, 보장 범위와 공백 |
 | 관측성·장애 대응 | [07-observability.md](07-observability.md) | correlation ID, JSON 로그, metric, readiness, alert |
 | 빌드·의존성 | [08-dependency-build.md](08-dependency-build.md) | 지원 버전, lockfile, 의존성 예외, 정기 갱신 gate |
 | 민감 데이터 수명 | [09-sensitive-data-lifecycle.md](09-sensitive-data-lifecycle.md) | 제출 코드·replay 암호화, 보존·삭제, 접근 감사, 키 교체 |
+| 네트워크 구성 | [10-network-infrastructure.md](10-network-infrastructure.md) | 배포와 독립적인 OCI subnet·NSG·NAT·Bastion 코드, mock/실환경 검증 구분 |
 
 ## 역할 간 의존 방향
 

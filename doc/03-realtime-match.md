@@ -98,4 +98,4 @@ grace 뒤에도 소켓이 없을 때만 `WAITING|READY → DISCONNECTED` 전이�
 - reconnect grace 예약은 프로세스 메모리에 있어 해당 서버가 grace 중 재시작되면 예약 작업이 유실될 수 있다.
 - Redis script의 실환경 동시성은 REL-01에서 실제 Redis로 다시 검증한다.
 
-후속 확장 작업은 `M2-observability`, `M4-scale`에서 관리한다.
+후속 네트워크·배포 경계 작업은 [M4](../roadmap/M4-modernization-scale.md)에서 관리한다.

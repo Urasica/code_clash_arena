@@ -14,12 +14,40 @@ concurrency:
 
 jobs:
   real-system:
-    name: Infrastructure, browser, and five-language gate
-    runs-on: ubuntu-latest
-    timeout-minutes: 35
+    name: Infrastructure, browser, and five-language gate (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+            host_arch: x86_64
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            host_arch: aarch64
 
     steps:
       - uses: actions/checkout@v6
+
+      - name: Verify native runner and Docker architecture
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p gate-evidence
+          host_arch="$(uname -m)"
+          docker_arch="$(docker info --format '{{.Architecture}}')"
+          case "$docker_arch" in
+            x86_64) normalized_docker_arch=amd64 ;;
+            aarch64) normalized_docker_arch=arm64 ;;
+            *) normalized_docker_arch="$docker_arch" ;;
+          esac
+          printf 'source_sha=%s\nrunner=%s\nhost_arch=%s\ndocker_arch=%s\nnormalized_docker_arch=%s\n' \
+            "$GITHUB_SHA" '${{ matrix.runner }}' "$host_arch" "$docker_arch" "$normalized_docker_arch" \
+            | tee gate-evidence/runtime.txt
+          test "$host_arch" = '${{ matrix.host_arch }}'
+          test "$normalized_docker_arch" = '${{ matrix.arch }}'
 
       - uses: actions/setup-java@v5
         with:
@@ -37,6 +65,16 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Install encrypted-backup tool
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes age
+
+      - name: Verify disposable data backup and restore contract
+        run: |
+          python -m unittest discover -s deploy/backend/data/tests -p 'test_*.py' -v
+          python deploy/backend/data/tests/integration_data_stack.py
+
       - name: Frontend dependencies
         working-directory: frontend
         run: npm ci
@@ -45,15 +83,29 @@ jobs:
         working-directory: frontend
         run: npm run audit
 
+      - name: Frontend unit tests and production build
+        working-directory: frontend
+        run: |
+          npm test
+          npm run build
+
       - name: Install Chromium
         working-directory: frontend
         run: npx playwright install --with-deps chromium
 
       - name: Build execution engine
-        run: docker build -t code-battle-engine engine
+        run: |
+          docker build -t code-battle-engine engine
+          test "$(docker image inspect code-battle-engine --format '{{.Os}}/{{.Architecture}}')" = 'linux/${{ matrix.arch }}'
 
       - name: Verify five-language engine contract
+        env:
+          CCA_REQUIRE_DOCKER_TESTS: 'true'
         run: python -m unittest discover -s engine/tests -v
+
+      - name: Backend unit tests
+        working-directory: backend/code
+        run: sh mvnw test -q
 
       - name: Verify isolated infrastructure and failure recovery
         working-directory: backend/code
@@ -62,6 +114,46 @@ jobs:
           -Dcca.run.integration=true
           -Dtest=RealInfrastructureSmokeTest,ObservabilityIntegrationTest,DependencyFailureInjectionTest,FullStackAiFlowTest,FullStackPvpFlowTest,SensitiveDataIntegrationTest
           test -q
+
+      - name: Reject missing or skipped infrastructure contracts
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          expected = {
+              'RealInfrastructureSmokeTest',
+              'ObservabilityIntegrationTest',
+              'DependencyFailureInjectionTest',
+              'FullStackAiFlowTest',
+              'FullStackPvpFlowTest',
+              'SensitiveDataIntegrationTest',
+          }
+          results = {}
+          for report in Path('backend/code/target/surefire-reports').glob('TEST-*.xml'):
+              suite = ET.parse(report).getroot()
+              name = suite.attrib.get('name', '').rsplit('.', 1)[-1]
+              if name in expected:
+                  results[name] = {
+                      key: int(suite.attrib.get(key, '0'))
+                      for key in ('tests', 'failures', 'errors', 'skipped')
+                  }
+
+          missing = sorted(expected - results.keys())
+          invalid = {
+              name: value for name, value in results.items()
+              if value['tests'] < 1 or any(value[key] for key in ('failures', 'errors', 'skipped'))
+          }
+          evidence = {'missing': missing, 'invalid': invalid, 'results': results}
+          Path('gate-evidence').mkdir(exist_ok=True)
+          Path('gate-evidence/backend-integration.json').write_text(
+              json.dumps(evidence, indent=2, sort_keys=True), encoding='utf-8'
+          )
+          if missing or invalid:
+              raise SystemExit(f'Required integration contracts were missing or skipped: {evidence}')
+          PY
 
       - name: Package backend
         working-directory: backend/code
@@ -80,15 +172,58 @@ jobs:
         env:
           PLAYWRIGHT_BASE_URL: http://localhost:3000
           PLAYWRIGHT_API_BASE_URL: http://localhost:8080
-        run: npm run test:e2e
+        run: npm run test:e2e -- --fail-on-flaky-tests
 
-      - name: Upload failure evidence
-        if: failure()
+      - name: Reject missing or skipped browser contracts
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report_path = Path('frontend/test-results/results.json')
+          if not report_path.is_file():
+              raise SystemExit('Playwright JSON report is missing')
+          report = json.loads(report_path.read_text(encoding='utf-8'))
+          stats = report.get('stats', {})
+          evidence = {
+              key: int(stats.get(key, 0))
+              for key in ('expected', 'skipped', 'unexpected', 'flaky')
+          }
+          Path('gate-evidence/browser.json').write_text(
+              json.dumps(evidence, indent=2, sort_keys=True), encoding='utf-8'
+          )
+          if evidence['expected'] < 3 or any(evidence[key] for key in ('skipped', 'unexpected', 'flaky')):
+              raise SystemExit(f'Required browser contracts were missing, skipped, or flaky: {evidence}')
+          PY
+
+      - name: Record tested artifact identities
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p gate-evidence
+          if [ -d frontend/build ]; then
+            find frontend/build -type f -print0 \
+              | sort -z \
+              | xargs -0 sha256sum > gate-evidence/frontend-sha256.txt
+          fi
+          if [ -f backend/code/target/code-0.0.1-SNAPSHOT.jar ]; then
+            sha256sum backend/code/target/code-0.0.1-SNAPSHOT.jar \
+              > gate-evidence/backend-sha256.txt
+          fi
+          if docker image inspect code-battle-engine >/dev/null 2>&1; then
+            docker image inspect code-battle-engine > gate-evidence/engine-image.json
+          fi
+
+      - name: Upload release evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: release-gate-evidence
+          name: release-gate-${{ matrix.arch }}-evidence
           if-no-files-found: ignore
           path: |
+            gate-evidence
             backend-release.log
             backend/code/target/surefire-reports
             frontend/playwright-report

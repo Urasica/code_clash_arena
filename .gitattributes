@@ -1,0 +1,5 @@
+deploy/backend/data/*.py text eol=lf
+deploy/backend/data/**/*.py text eol=lf
+deploy/backend/data/**/*.sh text eol=lf
+deploy/backend/data/**/*.conf text eol=lf
+deploy/backend/data/**/*.cnf text eol=lf
