@@ -17,6 +17,48 @@ import datactl  # noqa: E402
 
 
 class DataControlTest(unittest.TestCase):
+    def test_compose_failure_reports_only_safe_container_state(self):
+        failed = mock.Mock(
+            returncode=1,
+            stdout=b"",
+            stderr=b"MYSQL_PASSWORD=must-not-appear",
+        )
+        status = mock.Mock(
+            returncode=0,
+            stdout=json.dumps([{
+                "Name": "cca-restore-test-mysql-1",
+                "Service": "mysql",
+                "State": "exited",
+                "Health": "",
+                "ExitCode": 137,
+                "Publishers": [{"URL": "127.0.0.1"}],
+            }]).encode(),
+            stderr=b"",
+        )
+        arguments = argparse.Namespace(project="cca-restore-test")
+        with mock.patch.object(datactl, "require_binary", return_value="docker"), mock.patch.object(
+            datactl, "compose_env", return_value={"SAFE": "value"},
+        ), mock.patch.object(datactl.subprocess, "run", side_effect=[failed, status]) as execute:
+            with self.assertRaises(datactl.DataOperationError) as raised:
+                datactl.compose_command(arguments, "up", "-d")
+
+        message = str(raised.exception)
+        self.assertIn('"ExitCode":137', message)
+        self.assertIn('"Service":"mysql"', message)
+        self.assertNotIn("must-not-appear", message)
+        self.assertNotIn("Publishers", message)
+        self.assertEqual(execute.call_count, 2)
+
+    def test_disposable_restore_destroys_source_volume_first(self):
+        integration = (DATA_ROOT / "tests" / "integration_data_stack.py").read_text(encoding="utf-8")
+        source_down = (
+            'compose(source_project, source_secrets, ports, "down", '
+            '"--volumes", "--remove-orphans")'
+        )
+        restore = "restore_report = control(python, ["
+        self.assertIn(source_down, integration)
+        self.assertLess(integration.index(source_down), integration.index(restore))
+
     def test_generates_distinct_external_credentials_and_restricted_acl(self):
         with tempfile.TemporaryDirectory() as temporary:
             target = Path(temporary) / "secrets"

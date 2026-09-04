@@ -63,7 +63,7 @@ python deploy/backend/data/datactl.py restore --project cca-restore-DRILL_ID --s
 
 `download`도 승인된 비공개 bucket을 먼저 확인하고 새 외부 경로에만 저장한 뒤 age header와 기록한 SHA-256을 검증한다. 도구는 restore MySQL을 먼저 시작하고 schema가 비어 있지 않으면 거부한다. 암호문의 인증을 끝낸 임시 평문만 import하고 종료 시 삭제를 시도한다. 일반 파일시스템 overwrite는 물리 매체에서 완전 삭제를 보장하지 않으므로 restore host의 암호화된 임시 디스크와 폐기 정책을 함께 사용한다.
 
-복원 결과에서 table/row 계약, 민감 payload의 앱 수준 AES-GCM envelope, Flyway validate, backup app의 write 거부, Redis stale key 부재를 확인한 뒤 복구 환경을 폐기한다. 자동 failover·운영 DB 덮어쓰기 기능은 제공하지 않는다.
+복원 결과에서 table/row 계약, 민감 payload의 앱 수준 AES-GCM envelope, Flyway validate, backup app의 write 거부, Redis stale key 부재를 확인한 뒤 복구 환경을 폐기한다. 자동 Gate의 복구 drill은 암호화 snapshot을 만든 뒤 source project와 volume을 먼저 제거하여 원본 host·volume에 의존하지 않는 복구임을 확인한다. Compose 작업이 실패하면 password나 raw stderr 대신 service·state·health·exit code만 출력한다. 자동 failover·운영 DB 덮어쓰기 기능은 제공하지 않는다.
 
 일반 점검 중지는 volume을 삭제하지 않는다.
 
@@ -87,6 +87,6 @@ python deploy/backend/data/datactl.py stop --project cca-data-production --secre
 
 ## 현재 검증 상태
 
-단위 검사는 secret 비노출·권한/ACL 구성·잘못된 업로드/복원 입력 거부를 확인한다. Docker 통합 검사는 고유한 임시 project/volume만 만들고 MySQL 역할 분리, Redis key/명령 ACL, age 암호화 backup, 새 MySQL 복원, 빈 Redis 재시작을 확인한 뒤 삭제한다.
+단위 검사는 secret 비노출·권한/ACL 구성·잘못된 업로드/복원 입력 거부와 실패 진단의 허용 필드를 확인한다. Docker 통합 검사는 고유한 임시 project/volume만 만들고 MySQL 역할 분리, Redis key/명령 ACL, age 암호화 backup, source volume 제거 후 새 MySQL 복원, 빈 Redis 재시작을 확인한 뒤 삭제한다.
 
 실제 Tokyo OCI Object Storage 업로드·다운로드 복원과 VM의 외부 접근 차단은 수행하지 않았다. ARM-01 이후 동일 배포 VM에서 확인하며, 그 전까지 DATA-03은 `IN_PROGRESS — 구현 및 로컬 검증, VM 검증 대기`다.

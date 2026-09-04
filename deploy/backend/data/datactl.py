@@ -215,14 +215,48 @@ def compose_env(args: argparse.Namespace, purpose: str = "service") -> dict[str,
     return env
 
 
-def compose_command(args: argparse.Namespace, *tail: str, purpose: str = "service", input_file=None):
-    command = [require_binary("docker"), "compose", "-f", str(COMPOSE), "-p", args.project, *tail]
+def compose_state_summary(base_command: list[str], env: dict[str, str]) -> str:
+    """Return a secret-free container state summary for failed Compose operations."""
     completed = subprocess.run(
-        command, env=compose_env(args, purpose), stdin=input_file,
+        [*base_command, "ps", "--all", "--format", "json"],
+        env=env, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False,
+    )
+    if completed.returncode or not completed.stdout:
+        return "unavailable"
+    try:
+        payload = json.loads(completed.stdout)
+        rows = payload if isinstance(payload, list) else [payload]
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        try:
+            rows = [json.loads(line) for line in completed.stdout.splitlines() if line.strip()]
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return "unavailable"
+    safe_rows = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        safe_rows.append({
+            key: row[key]
+            for key in ("Name", "Service", "State", "Health", "ExitCode")
+            if key in row
+        })
+    return json.dumps(safe_rows, separators=(",", ":"), sort_keys=True) if safe_rows else "unavailable"
+
+
+def compose_command(args: argparse.Namespace, *tail: str, purpose: str = "service", input_file=None):
+    base_command = [require_binary("docker"), "compose", "-f", str(COMPOSE), "-p", args.project]
+    command = [*base_command, *tail]
+    env = compose_env(args, purpose)
+    completed = subprocess.run(
+        command, env=env, stdin=input_file,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
     )
     if completed.returncode:
-        fail(f"Docker data operation failed at step: {' '.join(tail[:2])}")
+        state = compose_state_summary(base_command, env)
+        fail(
+            f"Docker data operation failed at step: {' '.join(tail[:2])}; "
+            f"container_state={state}"
+        )
     return completed.stdout
 
 

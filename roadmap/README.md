@@ -16,7 +16,7 @@
 
 마일스톤은 순서대로 완료한다. 뒤 마일스톤의 작업을 앞당길 수는 있지만, 앞 마일스톤의 완료 조건을 대신할 수 없다.
 
-M3까지 완료했다. M4는 실제 배포 환경과 독립적인 Public/Private Subnet·접근 정책, 루트 모노레포 관리와 서비스별 자동 CI/CD, native ARM 배포 게이트로 범위를 정리했다. Tokyo 리전의 OCI ARM VM 두 대(각 1 OCPU / 6 GB), Public/Private Subnet 각 하나와 배치 초안은 별도 [배포 프로필](M4-deployment-profile.md)에서 관리한다. DEV-01은 DONE을 유지한다. NET-01과 DATA-03은 로컬 구현을 마치고 실환경 검증 대기, ARM-01은 x64 로컬 계약을 마치고 GitHub-hosted native ARM 실행 대기로 IN_PROGRESS다. 앞의 세 작업은 1차 묶음으로 push했고, 두 차례 Gate에서 드러난 Linux Redis·MySQL file secret 권한 차이를 순서대로 교정하고 있다. 다음 단계는 MySQL 교정 내용을 push한 뒤 PR Gate와 native ARM Release Gate를 다시 확인하고 OPS-02 → REL-02를 진행하는 것이다. push는 세부 작업마다 하지 않고 검토 가능한 묶음으로 관리한다. 완료된 구현과 검증 근거는 각 마일스톤 문서와 [`../docs/improvement`](../docs/improvement/README.md)에 보존한다.
+M3까지 완료했다. M4는 실제 배포 환경과 독립적인 Public/Private Subnet·접근 정책, 루트 모노레포 관리와 서비스별 자동 CI/CD, native ARM 배포 게이트로 범위를 정리했다. Tokyo 리전의 OCI ARM VM 두 대(각 1 OCPU / 6 GB), Public/Private Subnet 각 하나와 배치 초안은 별도 [배포 프로필](M4-deployment-profile.md)에서 관리한다. DEV-01은 DONE을 유지한다. NET-01과 DATA-03은 로컬 구현을 마치고 실환경 검증 대기, ARM-01은 GitHub-hosted native ARM 전체 계약까지 통과했으나 Release Gate 전체 재검증 대기로 IN_PROGRESS다. 앞의 세 작업은 1차 묶음으로 push했고, 세 차례 Gate에서 Linux file secret과 amd64 복구 drill 격리를 순서대로 교정했다. 다음 단계는 로컬 검증을 마친 source volume 독립 복구 교정을 다음 묶음에 push한 뒤 PR Gate와 Release Gate를 다시 확인하고 OPS-02 → REL-02를 진행하는 것이다. push는 세부 작업마다 하지 않고 검토 가능한 묶음으로 관리한다. 완료된 구현과 검증 근거는 각 마일스톤 문서와 [`../docs/improvement`](../docs/improvement/README.md)에 보존한다.
 
 ## 상태 규칙
 

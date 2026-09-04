@@ -113,6 +113,9 @@ def main():
             ])
             if b"synthetic-sensitive-value" in cipher.read_bytes():
                 raise AssertionError("Encrypted artifact exposed plaintext.")
+            # Prove that the encrypted snapshot is independent of the source host and
+            # avoid making the restore drill depend on capacity for two live databases.
+            compose(source_project, source_secrets, ports, "down", "--volumes", "--remove-orphans")
             restore_report = control(python, [
                 "restore", "--project", restore_project, "--secrets", str(restore_secrets),
                 "--mysql-port", "0", "--redis-port", "0", "--file", str(cipher),
