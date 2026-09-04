@@ -6,7 +6,7 @@ services:
     restart: unless-stopped
     environment:
       MYSQL_DATABASE: code_arena
-      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/mysql-root-password
+      MYSQL_ROOT_PASSWORD_FILE: /tmp/cca-mysql-secrets/mysql-root-password
       TZ: UTC
     entrypoint: ["sh", "/usr/local/bin/cca-mysql-entrypoint"]
     command: ["mysqld", "--defaults-extra-file=/tmp/cca.cnf"]
@@ -34,6 +34,7 @@ services:
       - mysql-backup-client
       - mysql-health-client
     networks: [data-internal]
+    tmpfs: [/tmp]
     healthcheck:
       test: ["CMD", "sh", "/usr/local/bin/cca-mysql-health"]
       interval: 5s

@@ -92,6 +92,32 @@ class DataControlTest(unittest.TestCase):
         self.assertNotIn("/run/secrets/redis-app-password", redis_client)
         self.assertIn('"--aclfile", "/tmp/cca-redis-secrets/redis.acl"', compose)
 
+    def test_mysql_entrypoint_stages_secrets_before_dropping_privileges(self):
+        entrypoint = (DATA_ROOT / "mysql" / "entrypoint.sh").read_text(encoding="utf-8")
+        bootstrap = (DATA_ROOT / "mysql" / "bootstrap-users.sh").read_text(encoding="utf-8")
+        mysql_client = (DATA_ROOT / "health" / "mysql-client.sh").read_text(encoding="utf-8")
+        compose = (DATA_ROOT / "compose.yaml").read_text(encoding="utf-8")
+
+        for name in (
+            "mysql-root-password", "mysql-app-password", "mysql-migration-password",
+            "mysql-backup-password", "mysql-health-password", "mysql-app-client",
+            "mysql-migration-client", "mysql-backup-client", "mysql-health-client",
+        ):
+            self.assertIn(name, entrypoint)
+        self.assertLess(
+            entrypoint.index('cp "/run/secrets/$name" "$runtime_dir/$name"'),
+            entrypoint.index('exec /usr/local/bin/docker-entrypoint.sh "$@"'),
+        )
+        self.assertIn("chown mysql:root", entrypoint)
+        self.assertIn('/tmp/cca-mysql-secrets/$1', bootstrap)
+        self.assertNotIn('/run/secrets/$1', bootstrap)
+        self.assertIn('/tmp/cca-mysql-secrets/mysql-${role}-client', mysql_client)
+        self.assertNotIn('/run/secrets/mysql-${role}-client', mysql_client)
+        self.assertIn(
+            "MYSQL_ROOT_PASSWORD_FILE: /tmp/cca-mysql-secrets/mysql-root-password",
+            compose,
+        )
+
     def test_upload_rejects_plaintext_wrong_region_and_object_name_before_cli(self):
         with tempfile.TemporaryDirectory() as temporary:
             source = Path(temporary) / "backup.sql"

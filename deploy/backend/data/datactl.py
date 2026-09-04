@@ -240,6 +240,21 @@ def validate_configuration(args: argparse.Namespace, *, emit: bool = True) -> No
             fail(f"{service} must publish exactly one loopback-only port.")
         if set(services[service].get("networks", {})) != set(rendered["networks"]):
             fail(f"{service} must only join the internal data network.")
+    mysql = services["mysql"]
+    mysql_environment = mysql.get("environment", {})
+    mysql_volume_targets = {volume.get("target") for volume in mysql.get("volumes", [])}
+    if (
+        mysql.get("entrypoint", []) != ["sh", "/usr/local/bin/cca-mysql-entrypoint"]
+        or mysql.get("command", []) != ["mysqld", "--defaults-extra-file=/tmp/cca.cnf"]
+        or mysql_environment.get("MYSQL_ROOT_PASSWORD_FILE")
+        != "/tmp/cca-mysql-secrets/mysql-root-password"
+        or set(mysql.get("cap_drop", [])) != {"ALL"}
+        or set(mysql.get("cap_add", []))
+        != {"CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"}
+        or "/tmp" not in mysql.get("tmpfs", [])
+        or "/usr/local/bin/cca-mysql-entrypoint" not in mysql_volume_targets
+    ):
+        fail("MySQL must stage protected Compose secrets before dropping privileges.")
     redis_volumes = services["redis"].get("volumes", [])
     if services["redis"].get("read_only") is not True or any(
         volume.get("type") == "volume" for volume in redis_volumes

@@ -11,7 +11,7 @@ case "$role" in app|migration|backup|health) ;;
     (*) echo "Unsupported MySQL credential role." >&2; exit 2 ;;
 esac
 
-source_file="/run/secrets/mysql-${role}-client"
+source_file="/tmp/cca-mysql-secrets/mysql-${role}-client"
 target_file="/tmp/cca-mysql-${role}-$$.cnf"
 umask 077
 cp "$source_file" "$target_file"

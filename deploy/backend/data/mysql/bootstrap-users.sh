@@ -2,7 +2,7 @@
 set -eu
 
 read_secret() {
-    value=$(cat "/run/secrets/$1")
+    value=$(cat "/tmp/cca-mysql-secrets/$1")
     case "$value" in
         (*[!0-9a-f]*|'') echo "Invalid generated secret file: $1" >&2; exit 1 ;;
     esac
