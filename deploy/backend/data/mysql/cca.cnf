@@ -1,0 +1,8 @@
+[mysqld]
+bind-address=0.0.0.0
+mysqlx=0
+local-infile=OFF
+skip-name-resolve=ON
+require-secure-transport=ON
+general-log=OFF
+slow-query-log=OFF

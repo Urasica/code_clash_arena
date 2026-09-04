@@ -81,6 +81,8 @@ Flyway V3는 `submitted_code`를 nullable LONGTEXT로 바꾸고 삭제 시각 co
 
 운영 `prod` profile은 개발 기본 키를 거부한다. 실제 키는 32 random bytes를 Base64로 인코딩해 secret store에서 주입하고 Git, image, 로그, 문서에 기록하지 않는다.
 
+DB 내부 payload envelope와 database backup 암호화는 서로 다른 경계다. DATA-03의 논리 dump는 앱 암호화 상태와 관계없이 민감 자료로 취급하며, 평문 dump를 디스크에 남기지 않고 외부 복구 책임자가 보관하는 `age` identity의 public recipient로 즉시 암호화한다. 암호문과 SHA-256만 호스트 밖 비공개 저장소로 옮기고, 복원은 전용 빈 schema와 암호화된 임시 디스크에서 수행한다. 세부 절차는 [운영 데이터 안내](../deploy/backend/data/README.md)를 따른다.
+
 키 교체 절차는 다음과 같다.
 
 1. 새 key ID와 32-byte key를 생성한다.
@@ -113,4 +115,5 @@ Flyway V3는 `submitted_code`를 nullable LONGTEXT로 바꾸고 삭제 시각 co
 - 단위 테스트가 암호문 비결정성, AAD 변조 실패, 이전 키 복호화, 크기 제한, 삭제 권한, legacy/TTL/capacity batch drain을 검증한다.
 - 실제 MySQL 통합 테스트가 평문 비노출, 기존 평문 재암호화, 감사되는 복호화, 참가자 즉시 삭제를 확인한다.
 - 암호화는 애플리케이션 계정이나 호스트가 침해된 뒤의 복호화를 막지 않는다. DB dump·backup 노출 범위를 줄이는 방어이며 secret store 접근 통제와 키 교체가 함께 필요하다.
+- 로컬에서는 암호화 backup과 격리 복원을 검증했지만 실제 Tokyo Object Storage 왕복과 복구 책임자 identity 전달 절차는 아직 검증하지 않았다.
 - match metadata와 감사 actor는 삭제 후에도 남는다. 계정 전체 삭제·법적 보존 정책은 별도 요구사항으로 설계해야 한다.

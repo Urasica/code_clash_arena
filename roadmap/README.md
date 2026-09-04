@@ -16,7 +16,7 @@
 
 마일스톤은 순서대로 완료한다. 뒤 마일스톤의 작업을 앞당길 수는 있지만, 앞 마일스톤의 완료 조건을 대신할 수 없다.
 
-M3까지 완료했다. M4는 실제 배포 환경과 독립적인 Public/Private Subnet·접근 정책, 루트 모노레포 관리와 서비스별 자동 CI/CD, native ARM 배포 게이트로 범위를 정리했다. Tokyo 리전의 OCI ARM VM 두 대(각 1 OCPU / 6 GB), Public/Private Subnet 각 하나와 배치 초안은 별도 [배포 프로필](M4-deployment-profile.md)에서 관리한다. DEV-01은 DONE을 유지한다. NET-01은 IaC·mock 검증을 마치고 실환경 검증 대기로 IN_PROGRESS다. 다음 구현은 DATA-03 → ARM-01 → OPS-02 → REL-02 순이다. push는 세부 작업마다 하지 않고 앞의 세 작업과 뒤의 두 작업으로 묶어 검토한다. 완료된 구현과 검증 근거는 각 마일스톤 문서와 [`../docs/improvement`](../docs/improvement/README.md)에 보존한다.
+M3까지 완료했다. M4는 실제 배포 환경과 독립적인 Public/Private Subnet·접근 정책, 루트 모노레포 관리와 서비스별 자동 CI/CD, native ARM 배포 게이트로 범위를 정리했다. Tokyo 리전의 OCI ARM VM 두 대(각 1 OCPU / 6 GB), Public/Private Subnet 각 하나와 배치 초안은 별도 [배포 프로필](M4-deployment-profile.md)에서 관리한다. DEV-01은 DONE을 유지한다. NET-01은 IaC·mock 검증, DATA-03은 운영 데이터 경계·암호화 백업/격리 복원의 로컬 검증을 마치고 각각 실환경 검증 대기로 IN_PROGRESS다. 다음 구현은 ARM-01 → OPS-02 → REL-02 순이다. push는 세부 작업마다 하지 않고 앞의 세 작업과 뒤의 두 작업으로 묶어 검토한다. 완료된 구현과 검증 근거는 각 마일스톤 문서와 [`../docs/improvement`](../docs/improvement/README.md)에 보존한다.
 
 ## 상태 규칙
 

@@ -29,3 +29,5 @@ override.tf.json
 *_override.tf.json
 infra/oci/**/evidence/
 infra/oci/**/secrets/
+*.sql.age
+age-identity*.txt

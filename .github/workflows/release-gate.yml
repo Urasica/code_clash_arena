@@ -37,6 +37,16 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Install encrypted-backup tool
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes age
+
+      - name: Verify disposable data backup and restore contract
+        run: |
+          python -m unittest discover -s deploy/backend/data/tests -p 'test_*.py' -v
+          python deploy/backend/data/tests/integration_data_stack.py
+
       - name: Frontend dependencies
         working-directory: frontend
         run: npm ci

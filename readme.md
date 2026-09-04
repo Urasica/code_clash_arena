@@ -139,8 +139,8 @@ Spring Boot 단독 실행은 루트 `.env`를 자동으로 읽지 않습니다. 
 
 - `.env`와 실제 JWT·OAuth·암호화 키는 Git에 커밋하지 않습니다.
 - 운영에서는 개발용 `JWT_SECRET`, `DATA_ENCRYPTION_KEY`를 반드시 교체하고 HTTPS cookie를 사용합니다.
-- 배포 전 DB backup과 Flyway migration 권한을 확인하며, 이미 적용된 migration 파일은 수정하지 않습니다.
+- 배포 전 암호화 DB backup을 확인하고 앱과 분리한 migration 계정으로 Flyway를 실행하며, 이미 적용된 migration 파일은 수정하지 않습니다.
 - Docker socket과 management endpoint는 외부에 공개하지 않습니다.
 - 암호화 키를 교체할 때는 기존 키를 이전 키 목록에 유지합니다.
 
-세부 기준은 [인증·HTTP API](doc/02-auth-http-api.md), [코드 실행·게임 엔진](doc/04-code-execution-engine.md), [관측성·장애 대응](doc/07-observability.md), [빌드·의존성](doc/08-dependency-build.md), [민감 데이터 수명](doc/09-sensitive-data-lifecycle.md)에 나누어 기록되어 있습니다.
+세부 기준은 [인증·HTTP API](doc/02-auth-http-api.md), [코드 실행·게임 엔진](doc/04-code-execution-engine.md), [관측성·장애 대응](doc/07-observability.md), [빌드·의존성](doc/08-dependency-build.md), [민감 데이터 수명](doc/09-sensitive-data-lifecycle.md)에 나누어 기록되어 있습니다. 운영 MySQL·Redis와 backup/restore 절차는 [DATA-03 운영 데이터 안내](deploy/backend/data/README.md)를 따릅니다.

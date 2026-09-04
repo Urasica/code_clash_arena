@@ -2,7 +2,7 @@
 
 ## 역할
 
-이 영역은 사용자·매치·플레이어·리플레이를 MySQL에 저장하고, Redis와 Docker를 포함한 로컬 실행 환경 및 애플리케이션 설정을 제공한다.
+이 영역은 사용자·매치·플레이어·리플레이를 MySQL에 저장하고, Redis와 Docker를 포함한 개발 환경과 운영 데이터 경계 및 애플리케이션 설정을 제공한다.
 
 ## MySQL 도메인 모델
 
@@ -135,7 +135,7 @@ disconnect는 winner/reason과 0:0 기본 score로 같은 PvP 저장 경로를 �
 | MySQL | `DATABASE_URL`, `DATABASE_USERNAME`, `DATABASE_PASSWORD` | localhost `code_arena`, `cca/cca_dev` |
 | MySQL timeout | `DATABASE_CONNECTION_TIMEOUT_MS`, `DATABASE_VALIDATION_TIMEOUT_MS`, `DATABASE_CONNECT_TIMEOUT_MS`, `DATABASE_SOCKET_TIMEOUT_MS` | `5000`, `2000`, `5000`, `5000` ms |
 | JPA | 고정 설정 | `ddl-auto=validate` |
-| Redis | `REDIS_HOST`, `REDIS_PORT` | `localhost:6379` |
+| Redis | `REDIS_HOST`, `REDIS_PORT`, `REDIS_USERNAME`, `REDIS_PASSWORD` | `localhost:6379`, 인증 없음 |
 | Redis timeout | `REDIS_CONNECT_TIMEOUT`, `REDIS_COMMAND_TIMEOUT` | `3s`, `3s` |
 | frontend origin | `FRONTEND_URL` | `http://localhost:3000` |
 | engine | `ENGINE_IMAGE`, `ENGINE_WORKSPACE` | `code-battle-engine:latest`, `temp` |
@@ -144,7 +144,7 @@ disconnect는 winner/reason과 0:0 기본 score로 같은 PvP 저장 경로를 �
 | JWT/cookie | `JWT_SECRET`, `JWT_EXPIRATION`, `COOKIE_SECURE`, `COOKIE_SAME_SITE` | 개발값, 7d, false, Lax |
 | 민감 데이터 | `DATA_ENCRYPTION_*`, `DATA_*_RETENTION`, `DATA_MAX_*`, `DATA_CLEANUP_*` | 개발 키, code 7d, replay 30d, 최신 1,000 match |
 
-`.env.example`은 Compose와 운영 설정 이름을 함께 보여준다. Spring Boot는 루트 `.env`를 자동으로 읽지 않으므로 backend 값은 shell 또는 IDE에도 export해야 한다.
+`.env.example`은 Compose와 운영 설정 이름을 함께 보여준다. Spring Boot는 루트 `.env`를 자동으로 읽지 않으므로 backend 값은 shell 또는 IDE에도 export해야 한다. `prod` profile은 저장소 밖 configtree의 DB·Redis app credential을 읽고, host-local endpoint·MySQL TLS·별도 Redis ACL·management loopback과 Flyway 비활성화를 기동 시 강제한다.
 
 readiness에 포함되는 DB·Redis 검사가 네트워크 단절 상태에서 무기한 대기하지 않도록 pool 획득·검증과 driver connect/socket, Redis connect/command timeout을 각각 둔다. 운영 환경에서는 정상 쿼리와 네트워크의 p99보다 충분히 크면서 probe 허용 시간보다 작은 값으로 함께 조정한다.
 
@@ -161,7 +161,7 @@ readiness에 포함되는 DB·Redis 검사가 네트워크 단절 상태에서 �
 - V5는 `engine_digest`, `engine_policy_version`을 추가하고 기존 행을 `legacy-unknown`으로 표시한다. 신규 AI/PvP/disconnect 저장은 두 값을 필수로 채운다.
 - 기존 map을 복원할 수 없는 행은 `{"legacy":true}`로 표시한다. 신규 AI/PvP 결과에는 실제 초기 map JSON이 필수다.
 - migration 후 Hibernate `validate`가 entity와 물리 schema의 타입·필수 table/column 일치를 확인하며 불일치 시 기동을 중단한다.
-- 배포 전 DB backup을 만들고 애플리케이션과 동일 계정으로 migration 권한을 확인해야 한다. 이미 적용된 migration 파일은 수정하지 않고 다음 버전 파일을 추가한다.
+- 배포 전 DB backup을 만들고 `cca_migrator` 전용 계정으로 migration을 수행한다. 운영 애플리케이션의 `cca_app`에는 DDL 권한을 주지 않으며 Flyway도 기동하지 않는다. 이미 적용된 migration 파일은 수정하지 않고 다음 버전 파일을 추가한다. 자동 migration 단계는 OPS-02에서 연결한다.
 
 ## 로컬 인프라
 
@@ -173,6 +173,19 @@ readiness에 포함되는 DB·Redis 검사가 네트워크 단절 상태에서 �
 | redis | 6379 | `redis-data` | `redis-cli ping` |
 
 백엔드는 host Docker CLI로 별도 engine container를 실행하므로 Docker socket을 backend container에 mount하는 구성을 기본으로 제공하지 않는다.
+
+## 운영 데이터 경계
+
+운영 전용 [`deploy/backend/data`](../deploy/backend/data/README.md)는 개발용 루트 Compose를 대체하지 않는다.
+
+| service | 저장·복구 기준 | 접근·권한 기준 |
+| --- | --- | --- |
+| MySQL 8.4 | named volume을 원장으로 사용. 최소 읽기 계정의 논리 dump를 생성과 동시에 `age`로 암호화하고 호스트 밖에 보관 | `127.0.0.1:3306`만 publish. app·migration·backup·health 계정 분리, TLS 요구 |
+| Redis 7.4 | 매치 queue/room/socket/rate-limit/workspace 상태를 일시 데이터로 취급. volume·AOF·RDB 없이 장애 뒤 빈 상태로 재시작 | `127.0.0.1:6379`만 publish. default 계정 OFF, 앱 key prefix·명령 allowlist |
+
+두 서비스는 external egress가 없는 internal/non-attachable Docker network만 사용한다. 앱에는 생성한 secret 묶음의 `backend/` 하위 경로만 제공해 root·migration·backup 자격증명과 분리한다. 암호화 backup은 Tokyo OCI Object Storage의 승인된 비공개 bucket만 허용하며 instance principal과 overwrite 거부, 전송 checksum을 사용한다. 복원 도구는 새 `cca-restore-*` project의 빈 schema만 허용하고 기존 운영 DB를 덮어쓰거나 volume/object를 삭제하지 않는다.
+
+일회용 로컬 검사는 MySQL 역할별 DDL/DML 허용·거부, Redis prefix/관리 명령 거부, 암호화 snapshot, 별도 MySQL 복원과 Redis 빈 재시작을 확인했다. 실제 Private VM의 앱 연결·외부 차단과 Object Storage 왕복 복원은 ARM-01 이후 확인하므로 DATA-03은 아직 완료 상태가 아니다.
 
 ## 데이터 수명
 
@@ -193,5 +206,6 @@ readiness에 포함되는 DB·Redis 검사가 네트워크 단절 상태에서 �
 - DB 저장 실패 후 재시도/outbox가 없고 client 결과와 영속 상태가 달라질 수 있다. UUID 멱등성은 중복을 막지만 전달 보장은 하지 않으며, 현재는 저장 outcome과 duration metric으로 실패를 탐지한다.
 - account 전체 삭제와 match metadata의 법적 보존 정책은 아직 정의하지 않았다.
 - 이전 암호화 키로 저장된 payload를 신규 키로 자동 재암호화하지 않는다. 이전 키는 해당 payload가 모두 만료될 때까지 유지해야 한다.
+- 실제 Tokyo VM/Object Storage에서 네트워크 차단과 호스트 밖 backup 복원을 아직 검증하지 않았다.
 
-DATA-01의 migration, map 저장, aggregate 제약, UUID 멱등성과 DATA-02의 암호화·보존·삭제는 자동 테스트와 실제 MySQL smoke로 검증한다. 세부 정책과 키 교체는 [민감 데이터 수명 설계](09-sensitive-data-lifecycle.md), 관측 경계는 [관측성·장애 대응 설계](07-observability.md)를 따른다.
+DATA-01의 migration, map 저장, aggregate 제약, UUID 멱등성과 DATA-02의 암호화·보존·삭제는 자동 테스트와 실제 MySQL smoke로 검증한다. DATA-03 운영 경계의 사용·검증 절차는 [운영 데이터 안내](../deploy/backend/data/README.md), 현재 상태는 [M4](../roadmap/M4-modernization-scale.md)에서 관리한다. 세부 정책과 키 교체는 [민감 데이터 수명 설계](09-sensitive-data-lifecycle.md), 관측 경계는 [관측성·장애 대응 설계](07-observability.md)를 따른다.

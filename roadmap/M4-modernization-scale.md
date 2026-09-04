@@ -4,7 +4,7 @@
 - 선행: M3 DONE
 - 범위 갱신일: 2026-09-04
 - 범위 정리 브랜치: `codex/m4-subnet-plan`
-- 현재 단계: NET-01 구성의 로컬 구현·검증. 실제 OCI plan/apply·접근 검증과 후속 데이터·배포 기능은 아직 수행하지 않았다.
+- 현재 단계: NET-01 구성과 DATA-03 운영 데이터 경계의 로컬 구현·검증. 실제 OCI plan/apply·접근·Object Storage 복구 검증과 후속 배포 기능은 아직 수행하지 않았다.
 
 ## 목표와 범위
 
@@ -33,7 +33,7 @@ Public/Private Subnet, NSG, NAT Gateway, 내부 통신, 데이터 계층 접근 
 | --- | --- | --- | --- |
 | DEV-01 | DONE | CRA에서 유지보수되는 build/test 도구로 전환 유지 | DEP-01의 Vite/Vitest, env·bundle·test·브라우저 계약 유지 |
 | NET-01 | IN_PROGRESS | 배포 프로필과 독립적인 Public/Private Subnet·NSG·IGW/NAT·관리 접근 설계, 환경별 IaC | 논리 역할·접근 행렬·라우팅을 정의하고 승인된 검증 환경에서 허용/차단을 입증. 실제 배포 매핑과 미적용 항목을 구분 |
-| DATA-03 | READY | 데이터 계층의 DB·Redis 비공개화, 권한 분리, 외부 백업·복원 | 인터넷과 Edge에서 DB·Redis 직접 연결 불가. 앱 접근은 정상. 호스트 밖의 백업으로 복원 성공 |
+| DATA-03 | IN_PROGRESS | 데이터 계층의 DB·Redis 비공개화, 권한 분리, 외부 백업·복원 | 인터넷과 Edge에서 DB·Redis 직접 연결 불가. 앱 접근은 정상. 호스트 밖의 백업으로 복원 성공 |
 | ARM-01 | READY | 배포 게이트에 native Linux ARM64 실행 검증 추가 | 배포할 artifact의 ARM 호환성, 다섯 언어 실행·보안 corpus, 실제 DB/Redis 통합·브라우저 계약 통과. 누락·skip은 배포 차단 |
 | OPS-02 | READY | 루트 모노레포 관리 + 컴포넌트별 자동 CI/CD·공급망 검증 | 변경 영향에 맞는 배포만 실행. lockfile build, SBOM·image scan·signature, digest 기반 승격, migration dry-run, 단계적 배포·롤백 |
 | REL-02 | READY | 승인된 배포 프로필에서 실제 배포·연결·장애 복구 검증 | HTTPS/WSS, 쿠키 인증·AI/PvP·재연결·rollback 증거 확보. 논리 네트워크와 실제 리소스의 대응 및 미적용 항목을 명시 |
@@ -157,3 +157,14 @@ workflow 파일은 repository 루트의 `.github/workflows` 바로 아래에 둔
 - 현재 코드 설명·실환경 검증 행렬: [`doc/10-network-infrastructure.md`](../doc/10-network-infrastructure.md), 실행 안내: [`infra/oci/README.md`](../infra/oci/README.md).
 - 남은 조건: 승인된 계정·compartment·region·관리 클라이언트 IP, quota·비용·IAM·state backend 결정, 실제 plan/apply와 VNIC 매핑, 허용/차단·TLS·Bastion·NAT 검증. 네트워크 검증 환경과 서비스 배포 환경을 구분해 기록한다.
 - 상태: 로컬 구성 준비, 실환경 검증 대기. `DONE`이 아니며 완료 커밋·push 없음.
+
+## DATA-03 진행 기록 — 2026-09-04
+
+- 근거: 개발용 Compose의 공개 port·공용 앱/migration 권한·Redis volume을 운영에 그대로 사용할 수 없고, 호스트 장애와 분리된 복원 증거가 필요했다.
+- 구현: [`deploy/backend/data`](../deploy/backend/data/README.md)에 운영 전용 MySQL·Redis Compose와 제어 도구를 추가했다. 두 port는 IPv4 loopback에만 publish하고 internal/non-attachable network만 사용한다. MySQL은 영속 volume, Redis는 volume/AOF/RDB 없는 빈 상태 재시작으로 구분했다.
+- 권한: MySQL app·migration·backup·health 계정을 분리하고 앱 계정에서 DDL을 제거했다. Redis default 계정은 끄고 앱이 실제 사용하는 key prefix와 명령만 ACL에 허용했다. 앱에는 별도 `backend/` 경로의 app credential만 전달하고 DB root·migration·backup secret은 전달하지 않는다. `prod` 기동은 loopback DB/Redis, 전용 앱 계정, MySQL TLS, Flyway 비활성화, management loopback을 검증한다.
+- 백업/복원: `mysqldump` 출력을 평문 파일로 만들지 않고 `age` public recipient로 바로 암호화한다. OCI upload 전에 Tokyo region과 비공개 bucket·승인 compartment를 확인하며 instance principal, checksum 검증, overwrite 거부를 사용한다. 복원은 새 `cca-restore-*` project와 빈 schema에서만 허용하고 Redis 과거 상태는 복원하지 않는다.
+- 로컬 검증: Python 단위 7건, 운영 Compose 구성, 실제 MySQL 역할 거부/허용, Redis key·관리 명령 거부, 암호화 snapshot과 별도 MySQL 복원, Redis 빈 재시작을 통과했다. 백엔드 빠른 회귀 `104 pass / 6 opt-in skip`과 실제 MySQL·Redis·engine 통합 6종도 통과했다. 일회용 container·volume은 검사 종료 후 남지 않았다.
+- 게이트: DATA 단위 검사를 기존 Ubuntu/Windows PR Gate에, 일회용 백업·복원 검사를 Release Gate에 연결했다. 변경한 원격 workflow는 아직 실행하지 않았다.
+- 남은 조건: ARM-01 이후 실제 Private VM에서 앱 연결과 Edge/인터넷 차단을 같은 시점의 대조군으로 확인한다. Tokyo Object Storage에 올린 호스트 밖 암호문을 새 복구 환경으로 내려받아 schema·행·민감 payload·Flyway 계약을 확인해야 한다.
+- 상태: 구현 및 로컬 검증 완료, 실제 VM/Object Storage 검증 대기. `DONE`이 아니며 완료 커밋·push 없음.

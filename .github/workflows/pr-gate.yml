@@ -57,6 +57,9 @@ jobs:
           terraform -chdir=infra/oci/network validate -no-color
           terraform -chdir=infra/oci/network test -no-color
 
+      - name: Data boundary unit tests (no cloud credentials)
+        run: python -m unittest discover -s deploy/backend/data/tests -p 'test_*.py' -v
+
       - name: Backend tests (Linux)
         if: runner.os != 'Windows'
         working-directory: backend/code
