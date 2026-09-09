@@ -1,0 +1,23 @@
+version: 1.0
+component: deployment
+runAs: root
+shell: bash
+timeoutInSeconds: 600
+env:
+  variables:
+    CCA_PYTHON_BIN: /usr/bin/python3.11
+    OCIR_REGISTRY: ${ocirRegistry}
+  vaultVariables:
+    OCIR_USERNAME: ${ocirUserVaultId}
+    OCIR_AUTH_TOKEN: ${ocirAuthVaultId}
+steps:
+  - stepType: Command
+    name: Activate previous backend release
+    command: |
+      set -euo pipefail
+      printf '%s' "$OCIR_AUTH_TOKEN" | /usr/bin/docker login "$OCIR_REGISTRY" --username "$OCIR_USERNAME" --password-stdin >/dev/null
+      status=0
+      /usr/bin/bash /opt/code-clash-arena/backend/current/ops/install.sh rollback || status=$?
+      /usr/bin/docker logout "$OCIR_REGISTRY" >/dev/null 2>&1
+      exit "$status"
+    timeoutInSeconds: 540

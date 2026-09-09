@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 ENGINE_DIR = ROOT / "engine"
 RUNNER_DIR = ROOT / "backend" / "code" / "src" / "main" / "resources" / "templates" / "runners"
-IMAGE = "code-battle-engine"
+IMAGE = os.environ.get("CCA_ENGINE_TEST_IMAGE", "code-battle-engine")
 
 USER_CODE = {
     "python": "def strategy(my_pos, coins, walls, board_size):\n    return 'STAY'",

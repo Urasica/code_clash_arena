@@ -1,0 +1,2 @@
+ocarun ALL=(root) NOPASSWD: /usr/bin/nginx -t
+ocarun ALL=(root) NOPASSWD: /usr/bin/systemctl reload nginx

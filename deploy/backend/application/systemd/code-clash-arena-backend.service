@@ -1,0 +1,41 @@
+[Unit]
+Description=Code Clash Arena backend
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=cca
+Group=cca
+SupplementaryGroups=docker
+WorkingDirectory=/opt/code-clash-arena/backend/current
+Environment=SPRING_PROFILES_ACTIVE=prod
+Environment=SERVER_ADDRESS=127.0.0.1
+Environment=SERVER_FORWARD_HEADERS_STRATEGY=framework
+Environment=MANAGEMENT_PORT=8081
+Environment=ENGINE_WORKSPACE=/var/lib/code-clash-arena/workspaces
+Environment=CCA_DATA_SECRETS_DIR=/run/secrets/backend/
+EnvironmentFile=/etc/code-clash-arena/backend.env
+EnvironmentFile=/opt/code-clash-arena/backend/current/runtime.env
+ExecStart=/usr/bin/java -XX:MaxRAMPercentage=65 -jar /opt/code-clash-arena/backend/current/app.jar
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=45s
+SuccessExitStatus=143
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+BindReadOnlyPaths=/etc/code-clash-arena/data-secrets/backend:/run/secrets/backend
+ReadWritePaths=/var/lib/code-clash-arena/workspaces
+RestrictSUIDSGID=true
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

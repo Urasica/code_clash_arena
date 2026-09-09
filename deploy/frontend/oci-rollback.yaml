@@ -1,0 +1,15 @@
+version: 1.0
+component: deployment
+runAs: ocarun
+shell: bash
+timeoutInSeconds: 300
+env:
+  variables:
+    CCA_PYTHON_BIN: /usr/bin/python3.11
+steps:
+  - stepType: Command
+    name: Activate previous frontend release
+    command: |
+      set -euo pipefail
+      /usr/bin/bash /opt/code-clash-arena/frontend/current/ops/install.sh rollback
+    timeoutInSeconds: 240
