@@ -13,6 +13,9 @@ class HostDeploymentContractTest(unittest.TestCase):
         config = self.read("deploy/frontend/nginx/code-clash-arena.conf")
         self.assertGreaterEqual(config.count("__CCA_PUBLIC_HOSTNAME__"), 2)
         self.assertIn("if ($host != __CCA_PUBLIC_HOSTNAME__) { return 444; }", config)
+        self.assertIn("listen 443 ssl http2;", config)
+        self.assertIn("listen [::]:443 ssl http2;", config)
+        self.assertNotIn("http2 on;", config)
         self.assertIn("proxy_ssl_verify on;", config)
         self.assertIn("proxy_ssl_name app.cca.internal;", config)
         self.assertRegex(config, r"location ~ \^/actuator[\s\S]*?return 404;")
@@ -69,6 +72,9 @@ class HostDeploymentContractTest(unittest.TestCase):
             "CCA_PUBLIC_ORIGIN",
         ):
             self.assertIn(required, provision)
+        self.assertIn("systemctl enable nginx.service >/dev/null", provision)
+        self.assertIn("systemctl enable docker.service >/dev/null", provision)
+        self.assertNotIn("systemctl enable docker.service nginx.service", provision)
 
     def test_embedded_python_in_host_scripts_compiles(self):
         for relative in (

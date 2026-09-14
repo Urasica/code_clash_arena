@@ -154,9 +154,10 @@ else
   restorecon -RF /var/lib/code-clash-arena/workspaces /etc/nginx/conf.d/code-clash-arena-application.conf
   firewall-cmd --permanent --add-port=8443/tcp >/dev/null
   systemctl daemon-reload
-  systemctl enable docker.service nginx.service >/dev/null
+  systemctl enable docker.service >/dev/null
 fi
 
+systemctl enable nginx.service >/dev/null
 firewall-cmd --reload >/dev/null
 nginx -t
 systemctl restart nginx

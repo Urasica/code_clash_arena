@@ -196,5 +196,6 @@ ARM-01 이전 `.github/workflows/release-gate.yml`은 `ubuntu-latest` 한 환경
 - 순서·복구: backend는 manifest/engine 검증, DATA-03 기동, 별도 Flyway 계정의 계획, Tokyo 외부 암호화 backup, migration, restart/readiness 순서다. 실패 시 `previous` release로 전환하고, 명시 rollback workflow도 새 build 없이 직전 성공 release를 활성화한다. DB migration을 자동 역실행하지 않는다.
 - 대상 호스트: 일반 컴퓨팅 `x86_64`, Oracle Linux 9.8 두 대다. OS 기본 Python 3.9.25는 변경하지 않고 배포 도구는 명시적으로 `/usr/bin/python3.11` 3.11.13을 사용한다. bootstrap은 architecture·OS major·Python minor와 공개 인증서의 DNS SAN을 fail-closed로 확인한다.
 - 로컬 검증: 배포 Python 단위 계약 38건, Linux Bash 구문, 렌더링한 Nginx HTTPS 구성, actionlint, frontend unit 19건과 production build가 통과했다. 변경 분류, manifest/OCI helper, host proxy·systemd·spec와 smoke verifier 세부 구성 및 환경 변수·OCI pipeline·VM 준비 절차는 [`../doc/11-delivery-deployment.md`](../doc/11-delivery-deployment.md)에 기록했다.
+- 실환경 bootstrap 보정: Oracle Linux 9.8 Edge VM에서 Nginx 1.20.1이 독립 `http2 on` 지시어를 거부하고 Edge 역할의 Nginx가 재부팅 자동 시작에 등록되지 않는 것을 확인했다. HTTP/2 listener를 1.20 호환 형식으로 바꾸고 Nginx enable을 역할 공통 단계로 이동했으며, 대상 VM 재프로비저닝 확인은 남아 있다.
 - 남은 조건: GitHub `production-frontend`/`production-backend` environment와 OCI Artifact/OCIR/DevOps pipeline/IAM을 구성하고 두 VM에서 최초 배포·component별 변경·실패 복구·명시 rollback을 확인한다. 이 증거 전까지 `DONE`이 아니다.
 - 상태: 구현 및 로컬 검증 완료, 실제 OCI pipeline 검증 대기. 이 증거 전까지 `DONE`이 아니다.

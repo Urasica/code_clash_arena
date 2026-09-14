@@ -80,7 +80,7 @@ sudo CCA_PYTHON_BIN=/usr/bin/python3.11 \
 
 Application 환경 파일은 [`../deploy/backend/application/backend.env.example`](../deploy/backend/application/backend.env.example)의 이름만 참고해 별도 secret 전달 경로에서 작성한다. JWT, 데이터 암호화 key와 OAuth secret의 실제 값은 저장소·GitHub variable·OCI deployment argument에 넣지 않는다. DATA-03 secret 생성 뒤 `provision.sh application`이 앱용 하위 네 파일만 `cca`가 읽을 수 있게 정리한다. migration·backup 계정은 root로 실행되는 승인된 OCI Run Command 단계에서만 읽으며 Spring process에는 mount하지 않는다.
 
-bootstrap은 SELinux label, host firewall, release/state 디렉터리, Nginx와 systemd 파일을 설치한다. Edge의 `ocarun` sudo는 `nginx -t`와 Nginx reload 두 명령만 허용한다. Application 배포는 OCI Run Command의 `root` step을 사용하므로 해당 DevOps pipeline 실행 권한 자체를 운영 변경 권한으로 취급하고 IAM과 GitHub environment approval을 제한한다. 일반 inbound SSH 배포 권한은 필요 없다. Bastion은 별도의 제한된 관리·검증 세션에만 사용한다.
+bootstrap은 SELinux label, host firewall, release/state 디렉터리, Nginx와 systemd 파일을 설치하고 두 역할 모두 Nginx의 부팅 자동 시작을 활성화한다. Application 역할만 Docker의 부팅 자동 시작을 추가한다. Edge HTTP/2 listener는 배포 대상 Oracle Linux 9의 Nginx 1.20과 호환되는 `listen 443 ssl http2` 형식을 사용한다. Edge의 `ocarun` sudo는 `nginx -t`와 Nginx reload 두 명령만 허용한다. Application 배포는 OCI Run Command의 `root` step을 사용하므로 해당 DevOps pipeline 실행 권한 자체를 운영 변경 권한으로 취급하고 IAM과 GitHub environment approval을 제한한다. 일반 inbound SSH 배포 권한은 필요 없다. Bastion은 별도의 제한된 관리·검증 세션에만 사용한다.
 
 ## OCI DevOps 준비
 
