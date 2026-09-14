@@ -1,16 +1,16 @@
-# M4 — 네트워크 계층 분리와 ARM 배포
+# M4 — 네트워크 계층 분리와 독립 배포
 
 - 상태: IN_PROGRESS
 - 선행: M3 DONE
 - 범위 갱신일: 2026-09-04
 - 범위 정리 브랜치: `codex/m4-subnet-plan`
-- 현재 단계: NET-01·DATA-03 로컬 구현과 ARM-01 native gate 구성을 검증했다. 실제 OCI plan/apply·접근·Object Storage 복구, GitHub-hosted ARM 실행, 후속 배포 기능은 아직 수행하지 않았다.
+- 현재 단계: NET-01·DATA-03 로컬 구현과 ARM-01 전체 Release Gate를 검증했다. OPS-02를 일반 컴퓨팅 AMD64·Oracle Linux 9.8·Python 3.11 VM과 무료 DNS HTTPS 배포 계약에 맞추고 있다. 실제 OCI plan/apply·접근·Object Storage 복구와 DevOps pipeline 배포는 아직 수행하지 않았다.
 
 ## 목표와 범위
 
 Public/Private Subnet, NSG, NAT Gateway, 내부 통신, 데이터 계층 접근 제한을 독립적인 네트워크 설계로 정의한다. 서브넷은 공개 진입점과 비공개 서비스의 역할·접근 정책에 따라 구분하며, 특정 공급자·VM 대수·사양·프로세스 배치와 일대일로 묶지 않는다.
 
-개발·로드맵·PR은 저장소 루트에서 통합 관리하되 프론트와 백엔드의 배포 단위·자동 CI/CD·롤백은 분리한다. DEV-01은 완료 상태를 유지하고 native ARM 배포 게이트를 추가한다. 서버리스와 실행 워커 전용 VM 분리는 이번 범위에 포함하지 않는다.
+개발·로드맵·PR은 저장소 루트에서 통합 관리하되 프론트와 백엔드의 배포 단위·자동 CI/CD·롤백은 분리한다. DEV-01은 완료 상태를 유지하고 amd64/native ARM64 이식성 게이트를 유지한다. 실제 배포 대상은 `linux/amd64`이며 서버리스와 실행 워커 전용 VM 분리는 이번 범위에 포함하지 않는다.
 
 논리 네트워크 설계, 실제 환경의 적용 상태, CI/CD 구현 상태는 각각 구분하여 기록한다. 설계에 Public/Private 영역을 표시했다는 이유만으로 실제 서브넷·NSG가 구성되었다고 설명하지 않는다.
 
@@ -25,7 +25,7 @@ Public/Private Subnet, NSG, NAT Gateway, 내부 통신, 데이터 계층 접근 
 
 데이터 계층은 Private 영역 안의 별도 접근 경계로 정의하며, 이 표가 곧 세 번째 서브넷이나 별도 DB VM 생성을 의미하지 않는다. 각 영역을 실제 리소스·VNIC·서브넷에 연결하는 작업은 배포 환경별 매핑으로 관리한다.
 
-기존에 요청한 OCI ARM VM 두 대(각 1 OCPU / 6 GB)와 프로세스 배치 초안은 별도 [배포 프로필](M4-deployment-profile.md)에 보존한다. 이 프로필은 논리 네트워크의 정의가 아니며, 실제 적용 여부도 해당 문서에서 구분한다.
+실제 확보한 OCI 일반 컴퓨팅 AMD64 VM 두 대(각 1 OCPU / 6 GB)와 Oracle Linux 9.8·Python 3.11·무료 DNS HTTPS 프로필은 별도 [배포 프로필](M4-deployment-profile.md)에 기록한다. 이 프로필은 논리 네트워크의 정의가 아니며, 실제 적용 여부도 해당 문서에서 구분한다.
 
 ## 작업과 완료 조건
 
@@ -34,11 +34,11 @@ Public/Private Subnet, NSG, NAT Gateway, 내부 통신, 데이터 계층 접근 
 | DEV-01 | DONE | CRA에서 유지보수되는 build/test 도구로 전환 유지 | DEP-01의 Vite/Vitest, env·bundle·test·브라우저 계약 유지 |
 | NET-01 | IN_PROGRESS | 배포 프로필과 독립적인 Public/Private Subnet·NSG·IGW/NAT·관리 접근 설계, 환경별 IaC | 논리 역할·접근 행렬·라우팅을 정의하고 승인된 검증 환경에서 허용/차단을 입증. 실제 배포 매핑과 미적용 항목을 구분 |
 | DATA-03 | IN_PROGRESS | 데이터 계층의 DB·Redis 비공개화, 권한 분리, 외부 백업·복원 | 인터넷과 Edge에서 DB·Redis 직접 연결 불가. 앱 접근은 정상. 호스트 밖의 백업으로 복원 성공 |
-| ARM-01 | IN_PROGRESS | 배포 게이트에 native Linux ARM64 실행 검증 추가 | 배포할 artifact의 ARM 호환성, 다섯 언어 실행·보안 corpus, 실제 DB/Redis 통합·브라우저 계약 통과. 누락·skip은 배포 차단 |
-| OPS-02 | READY | 루트 모노레포 관리 + 컴포넌트별 자동 CI/CD·공급망 검증 | 변경 영향에 맞는 배포만 실행. lockfile build, SBOM·image scan·signature, digest 기반 승격, migration dry-run, 단계적 배포·롤백 |
+| ARM-01 | DONE | Release Contract에 native Linux ARM64 이식성 검증 추가 | amd64/native ARM64에서 다섯 언어 실행·보안 corpus, 실제 DB/Redis 통합·브라우저 계약 통과. 누락·skip은 배포 차단 |
+| OPS-02 | IN_PROGRESS | 루트 모노레포 관리 + 컴포넌트별 자동 CI/CD·공급망 검증 | 변경 영향에 맞는 배포만 실행. lockfile build, SBOM·image scan·signature, digest 기반 승격, migration dry-run, 단계적 배포·롤백 |
 | REL-02 | READY | 승인된 배포 프로필에서 실제 배포·연결·장애 복구 검증 | HTTPS/WSS, 쿠키 인증·AI/PvP·재연결·rollback 증거 확보. 논리 네트워크와 실제 리소스의 대응 및 미적용 항목을 명시 |
 
-기존 OPS-02의 공급망·migration·rollback 목표를 삭제하지 않고 독립 배포에 적용한다. ARM-01을 기록했다는 이유로 현재 Release Gate에 ARM job이 이미 있다고 해석하지 않는다.
+기존 OPS-02의 공급망·migration·rollback 목표를 삭제하지 않고 독립 배포에 적용한다. Release Gate에는 amd64와 native ARM64 architecture 검증이 있고 자동 delivery도 같은 exact-SHA 계약을 재사용한다. OCI로 승격하는 bundle과 image는 실제 VM에 맞춰 `linux/amd64`로 고정한다.
 
 ## NET-01: 네트워크와 데이터 접근 경계
 
@@ -101,22 +101,22 @@ workflow 파일은 repository 루트의 `.github/workflows` 바로 아래에 둔
 
 ### 게이트와 배포 접근
 
-- 현재 Release Gate의 수동·`v*` tag 진입점과 기존 실제 인프라 검증을 보존하면서 공통 gate를 재사용할 수 있게 구성한다. 자동 CD에도 ARM 및 공급망 통과를 필수 의존성으로 걸고, 단순 `main` push만으로 배포 성공으로 처리하지 않는다.
+- 현재 Release Gate의 수동·`v*` tag 진입점과 기존 실제 인프라 검증을 보존하면서 공통 gate를 재사용할 수 있게 구성한다. 자동 CD에도 amd64/native ARM64 이식성 계약과 공급망 검사를 필수 의존성으로 걸고, 단순 `main` push만으로 배포 성공으로 처리하지 않는다.
 - 정확한 merge SHA 또는 명시한 release SHA에서 artifact를 만들고 검증한다. 이전 PR head의 성공 상태를 다른 SHA의 배포 증거로 재사용하지 않는다.
-- 배포 접근 기본안은 OCI Bastion의 제한된 수명·대상 세션이다. IAM, target agent/plugin 또는 SSH forwarding 방식, host key 검증, runner 발신 IP allowlist, 세션 종료를 NET-01/OPS-02에서 실증한다. `0.0.0.0/0` 관리 접근이나 SSH 검증 해제로 우회하지 않는다. [OCI Bastion](https://docs.oracle.com/en-us/iaas/Content/Bastion/Concepts/bastionoverview.htm)
+- 자동 배포는 OCI DevOps Instance Group과 Oracle Cloud Agent Run Command plugin을 사용하고 inbound SSH를 요구하지 않는다. Bastion은 제한된 수명·대상의 관리·검증 세션에만 사용한다. 두 경로의 IAM, agent/plugin, 세션 종료를 NET-01/OPS-02에서 실증하며 `0.0.0.0/0` 관리 접근이나 SSH 검증 해제로 우회하지 않는다. [OCI Bastion](https://docs.oracle.com/en-us/iaas/Content/Bastion/Concepts/bastionoverview.htm)
 - 운영 VM에 범용 self-hosted Actions runner를 설치해 PR/build/test를 실행하지 않는다. cloud-hosted 일회용 runner와 운영 배포 권한을 분리한다. Bastion 접근 방식이 계정 정책에 맞지 않으면 별도 설계 결정 후 제한된 pull 배포 방식 등을 검토한다.
 - 배포 계정은 필요한 배포 명령만 수행하도록 제한한다. registry/OCI/SSH/DB 자격증명은 해당 environment 또는 외부 secret store에만 두며 `.env`, Terraform state, private key, 제출 코드가 artifact·로그·저장소에 유출되지 않게 한다. DB migration 계정과 애플리케이션 계정의 권한을 구분한다.
 
-## ARM-01: 실제 ARM 실행을 배포 조건으로 추가
+## ARM-01: native ARM 이식성 회귀를 배포 조건으로 추가
 
-ARM-01 이전 `.github/workflows/release-gate.yml`은 `ubuntu-latest` 한 환경이었다. 현재 로컬 구성은 기존 x86/Linux·Windows 지원을 없애지 않고 Release Gate에 배포 대상인 `linux/arm64` 검증 경로를 추가했다.
+ARM-01 이전 `.github/workflows/release-gate.yml`은 `ubuntu-latest` 한 환경이었다. 현재 구성은 기존 x86/Linux·Windows 지원을 없애지 않고 Release Gate에 `linux/arm64` 이식성 검증 경로를 추가했다. OCI 운영 배포 대상은 별도로 `linux/amd64`다.
 
 1. native runner 기본 후보는 `ubuntu-24.04-arm`이다. 현재 public repository에서 사용할 수 있는 표준 ARM64 runner이며, OCI 운영 VM을 CI runner로 소비하지 않는다. 실제 job에서도 `uname -m`, Docker architecture를 확인한다. [GitHub runner 지원표](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)
 2. frontend는 lockfile 설치·unit/build를 검사하고, 배포할 proxy/runtime의 ARM 동작과 정적 artifact를 확인한다. backend는 Java build/test/package와 runtime 동작을 검사한다. host binary·base image·MySQL·Redis·Toxiproxy 등 테스트 도구까지 ARM 호환성을 확인한다.
-3. engine은 ARM image로 init/compile/run, Python·Java·C·C++·JavaScript 실행, 기존 보안 corpus를 실제 수행한다. Docker나 image가 없어 integration이 skip된 실행은 합격으로 인정하지 않는다. QEMU build 성공이나 multi-arch manifest 존재만으로 native 실행 검증을 대체하지 않는다.
+3. native ARM64 job의 engine은 ARM image로 init/compile/run, Python·Java·C·C++·JavaScript 실행, 기존 보안 corpus를 실제 수행한다. Docker나 image가 없어 integration이 skip된 실행은 합격으로 인정하지 않는다. QEMU build 성공이나 multi-arch manifest 존재만으로 native 실행 검증을 대체하지 않는다.
 4. 실제 MySQL/Flyway·Redis/Testcontainers 통합, AI/PvP·disconnect 결과와 digest/policy 저장을 검사한다. 배포 artifact를 사용하는 browser/auth/HTTP/WSS smoke를 포함하며 frontend-only와 backend-only 변경에도 현재 상대 컴포넌트와의 호환성을 검증한다. 외부 Google credential을 PR CI에 전달하지 않는다.
 5. 통과한 artifact digest/hash와 gate evidence를 연결한다. 해당 배포 단위의 ARM gate가 실패·취소·누락·skip이면 CD를 차단하고 x86 gate 성공으로 대체하지 않는다. 초기 배포와 공통 경계 변경은 양쪽 전체 gate를 요구한다.
-6. native hosted runner 검증과 실제 배포 환경 검증은 구분한다. REL-02에서 배포 대상의 Docker·OS·네트워크와 사용자 기능 계약을 다시 확인한다.
+6. native hosted runner 이식성 검증과 AMD64 실제 배포 환경 검증은 구분한다. REL-02에서 대상 VM의 Docker·OS·네트워크와 사용자 기능 계약을 다시 확인한다.
 
 기존 필수 check 이름 `Fast regression (ubuntu-latest)`, `Fast regression (windows-latest)`은 변경하지 않는다. 새로운 ARM 검사를 PR required check로도 승격하려면 workflow와 ruleset을 일치시키는 별도 승인·검증이 필요하다. 이번 요구의 최소 조건은 **ARM 검증 없이는 배포 불가**이다.
 
@@ -134,11 +134,11 @@ ARM-01 이전 `.github/workflows/release-gate.yml`은 `ubuntu-latest` 한 환경
 ## 진행 순서와 착수 전 확인
 
 1. NET-01: 독립적인 논리 네트워크·접근 행렬 정의, 환경별 매핑과 IaC plan, 적용할 환경의 quota·권한·비용 확인.
-2. DATA-03과 ARM-01: 데이터 비공개·백업 기준, ARM artifact와 native gate 준비.
+2. DATA-03과 ARM-01: 데이터 비공개·백업 기준, amd64/native ARM64 이식성 gate 준비.
 3. OPS-02: 루트 변경 감지·컴포넌트별 build/gate/배포·공급망·rollback 연결.
 4. REL-02: 승인된 배포 프로필에 따라 적용하고 연결·사용자 흐름·장애 복구 검증. 네트워크 검증 환경과의 대응을 기록하고 M4 완료 판정.
 
-리소스 사양·계정·region·도메인·실제 호스트 배치는 [배포 프로필](M4-deployment-profile.md)에서 관리한다. 이 값들이 달라져도 Public/Private 구분과 접근 정책의 정의는 유지하며, 적용 방식과 검증 증거만 환경별로 갱신한다.
+리소스 사양·계정·region·DNS·실제 호스트 배치는 [배포 프로필](M4-deployment-profile.md)에서 관리한다. 이 값들이 달라져도 Public/Private 구분과 접근 정책의 정의는 유지하며, 적용 방식과 검증 증거만 환경별로 갱신한다.
 
 인프라 적용과 배포의 권한·비용 경계는 각 구현 작업에서 다시 확인한다. 코드 변경만으로 실제 리소스 생성, 원격 workflow 실행, repository settings 변경, 운영 배포 또는 push를 수행하지 않는다.
 
@@ -169,8 +169,9 @@ ARM-01 이전 `.github/workflows/release-gate.yml`은 `ubuntu-latest` 한 환경
 - 원격 1차 확인: PR #21의 Release Gate `33855510504`에서 amd64·arm64가 모두 Redis `unhealthy`로 중단됐다. Linux Compose가 외부 secret의 runner UID·`0600` mode를 유지해 권한을 낮춘 Redis가 ACL을 읽지 못한 것이 원인이었다. 시작 wrapper가 ACL과 앱 password만 `/tmp` tmpfs의 `redis:root`, `0440`으로 준비한 뒤 공식 entrypoint로 권한을 낮추도록 교정했다. 동일 UID/mode의 Linux volume 검증에서 인증 `PONG`, Redis UID 999, 유효 capability 0을 확인했으며 원격 재실행은 아직 하지 않았다.
 - 원격 2차 확인: Release Gate `33857960794`에서 두 architecture 모두 Redis가 `Healthy`가 되어 첫 교정 효과를 확인했다. 이어 MySQL이 동일한 Linux file secret 소유권 문제로 `unhealthy`가 됐다. MySQL wrapper도 필요한 password와 client 파일만 `/tmp` tmpfs의 `mysql:root`, `0440`으로 준비한 뒤 권한을 낮추도록 교정했으며 원격 재실행은 아직 하지 않았다.
 - 원격 3차 확인: PR #22의 Gate `33867457287`에서 Ubuntu·Windows 필수 검사가 모두 통과했다. Release Gate `33868037049`에서는 native arm64가 DATA-03 복구, 프론트·백엔드, 다섯 언어 engine, 실제 인프라와 Chromium 계약까지 전부 통과했다. amd64는 source backup 뒤 복구용 MySQL을 추가 기동하는 `up -d` 단계에서만 실패했으나 제어 도구가 raw Compose 오류를 폐기해 container 상태를 판별할 수 없었다. 같은 커밋의 로컬 amd64에서 source·restore 두 stack 동시 기동은 재현되지 않았다. 복구 drill은 암호문 생성 뒤 source project·volume을 먼저 폐기해 원본과의 독립성을 강화하고 동시 DB 용량 의존을 제거하며, 실패 시 secret-free service/state/health/exit code를 남기도록 교정했다. 원격 재실행은 아직 하지 않았다.
-- 남은 조건: ARM-01 이후 실제 Private VM에서 앱 연결과 Edge/인터넷 차단을 같은 시점의 대조군으로 확인한다. Tokyo Object Storage에 올린 호스트 밖 암호문을 새 복구 환경으로 내려받아 schema·행·민감 payload·Flyway 계약을 확인해야 한다.
-- 상태: 구현과 Release Gate 3차 교정의 로컬 검증 완료, 원격 Gate 재검증과 실제 VM/Object Storage 검증 대기. `DONE`이 아니다. 최초 구현 커밋은 `0b0673b`이며 1차 묶음으로 push했다.
+- 최종 원격 확인: source volume 독립 복구 교정을 포함한 SHA `5bda5dfed98181b70ad674820d1cdc2aeb8178e0`의 Release Gate `33871950779`에서 amd64와 native arm64가 모두 성공했다.
+- 남은 조건: 실제 Private VM에서 앱 연결과 Edge/인터넷 차단을 같은 시점의 대조군으로 확인한다. Tokyo Object Storage에 올린 호스트 밖 암호문을 새 복구 환경으로 내려받아 schema·행·민감 payload·Flyway 계약을 확인해야 한다.
+- 상태: 구현과 amd64/native arm64 Release Gate 검증 완료, 실제 VM/Object Storage 검증 대기. `DONE`이 아니다. 최초 구현 커밋은 `0b0673b`이며 1차 묶음으로 push했다.
 
 ## ARM-01 진행 기록 — 2026-09-04
 
@@ -183,5 +184,18 @@ ARM-01 이전 `.github/workflows/release-gate.yml`은 `ubuntu-latest` 한 환경
 - 원격 1차 확인: PR Gate `33855499166`의 두 필수 job은 frontend audit endpoint가 5분 뒤 동일하게 npm registry `503 Service Unavailable`을 반환해 실패했다. 취약점 검출 결과가 아니므로 audit을 제거하거나 성공으로 우회하지 않고 서비스 복구 뒤 재실행한다. Release Gate의 두 architecture는 위 DATA-03 Redis secret 권한 문제에서 동일하게 중단돼 native ARM 전체 계약은 아직 판정할 수 없다.
 - 원격 2차 확인: PR #22의 Ubuntu 필수 job은 audit을 포함해 전체 통과했고 Windows만 npm registry audit 요청의 network timeout으로 실패했다. Release Gate에서는 amd64·arm64 모두 Redis 교정을 통과했지만 MySQL 시작 단계에서 중단돼 native ARM의 후속 계약은 아직 판정하지 못했다.
 - 원격 3차 확인: PR #22의 두 필수 job은 모두 통과했다. Release Gate `33868037049`의 native arm64 job은 architecture 확인부터 DATA-03, frontend, 다섯 언어 engine, backend 실제 인프라, Chromium까지 skip 없이 전부 통과해 ARM-01의 GitHub-hosted 실행 계약을 입증했다. 전체 workflow는 별도 amd64 복구용 MySQL 기동 실패 때문에 실패 상태이며, 위 DATA-03 drill 격리 교정 후 다시 판정한다.
-- 남은 조건: 통과한 GitHub-hosted `ubuntu-24.04-arm` 증거를 전체 Release Gate 성공과 연결해야 한다. 이 증거는 OCI ARM VM 검증과 동일하지 않으며 실제 대상 OS·Docker·네트워크는 REL-02에서 다시 확인한다.
-- 상태: native ARM 원격 계약 통과, amd64 DATA-03 교정 후 전체 Release Gate 재검증 대기. `DONE`이 아니다. 최초 구현 커밋은 `7d4dda9`이며 1차 묶음으로 push했다.
+- 최종 원격 확인: SHA `5bda5dfed98181b70ad674820d1cdc2aeb8178e0`의 Release Gate `33871950779`에서 amd64와 native arm64 전체 workflow가 성공했다. 이 증거는 OCI AMD64 VM 검증과 동일하지 않으며 실제 대상 OS·Docker·네트워크는 OPS-02·REL-02에서 다시 확인한다.
+- 상태: `DONE`. SHA `5bda5df`에서 GitHub-hosted amd64/native ARM64 전체 Release Gate가 통과했다. 실제 OCI AMD64 VM 검증은 OPS-02·REL-02에 남아 있으며 ARM-01의 완료 조건과 구분한다. 최초 구현 커밋은 `7d4dda9`이며 1차 묶음으로 push했다.
+
+## OPS-02 진행 기록 — 2026-09-09~10
+
+- 근거: 루트 모노레포에는 PR/Release gate만 있었고 `main` 변경을 component별 운영 artifact, OCI DevOps, rollback으로 연결하는 workflow와 VM proxy/service 계약이 없었다.
+- 변경 감지: frontend/backend의 마지막 성공 GitHub Deployment SHA부터 exact main SHA까지 각각 비교한다. 실패 배포는 기준점을 전진시키지 않으며 공통·미분류 변경은 양쪽 영향으로 닫는다. 오래 대기한 실행은 실제 승격 직전 최신 main을 다시 확인한다.
+- gate·artifact: 기존 Release Gate 진입점과 PR 필수 check 이름을 보존하고 exact SHA reusable Release Contract를 만들었다. amd64/native ARM64 양쪽에서 계약을 검사하고, 실제 배포 job은 AMD64 backend JAR와 engine image를 SBOM·high severity scan·GitHub attestation 뒤 source SHA version의 immutable OCI Generic Artifact와 digest 고정 OCIR image로 승격한다. VM에서는 다시 build하지 않는다.
+- 배포 경계: Public VM Nginx는 무료 DNS 호스트명의 HTTPS/WSS에서 정적 frontend와 허용된 REST·STOMP·OAuth proxy만 제공하고 Private VM Nginx의 `app.cca.internal:8443` 인증서를 검증한다. Private VM은 내부 TLS 뒤 Spring과 management·MySQL·Redis를 loopback에 두며 Docker TCP API를 열지 않는다. Oracle Cloud Agent Run Command로 전달하고 운영 VM에 Actions runner를 두지 않는다.
+- 순서·복구: backend는 manifest/engine 검증, DATA-03 기동, 별도 Flyway 계정의 계획, Tokyo 외부 암호화 backup, migration, restart/readiness 순서다. 실패 시 `previous` release로 전환하고, 명시 rollback workflow도 새 build 없이 직전 성공 release를 활성화한다. DB migration을 자동 역실행하지 않는다.
+- 대상 호스트: 일반 컴퓨팅 `x86_64`, Oracle Linux 9.8 두 대다. OS 기본 Python 3.9.25는 변경하지 않고 배포 도구는 명시적으로 `/usr/bin/python3.11` 3.11.13을 사용한다. bootstrap은 architecture·OS major·Python minor와 공개 인증서의 DNS SAN을 fail-closed로 확인한다.
+- 로컬 검증: 배포 Python 단위 계약 38건, Linux Bash 구문, 렌더링한 Nginx HTTPS 구성, actionlint, frontend unit 19건과 production build가 통과했다. 변경 분류, manifest/OCI helper, host proxy·systemd·spec와 smoke verifier 세부 구성 및 환경 변수·OCI pipeline·VM 준비 절차는 [`../doc/11-delivery-deployment.md`](../doc/11-delivery-deployment.md)에 기록했다.
+- 실환경 bootstrap 보정: Oracle Linux 9.8 Edge VM에서 Nginx 1.20.1이 독립 `http2 on` 지시어를 거부하고 Edge 역할의 Nginx가 재부팅 자동 시작에 등록되지 않는 것을 확인했다. HTTP/2 listener를 1.20 호환 형식으로 바꾸고 Nginx enable을 역할 공통 단계로 이동했으며, 대상 VM 재프로비저닝 확인은 남아 있다.
+- 남은 조건: GitHub `production-frontend`/`production-backend` environment와 OCI Artifact/OCIR/DevOps pipeline/IAM을 구성하고 두 VM에서 최초 배포·component별 변경·실패 복구·명시 rollback을 확인한다. 이 증거 전까지 `DONE`이 아니다.
+- 상태: 구현 및 로컬 검증 완료, 실제 OCI pipeline 검증 대기. 이 증거 전까지 `DONE`이 아니다.

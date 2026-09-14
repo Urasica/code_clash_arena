@@ -1,0 +1,49 @@
+version: 1.0
+component: deployment
+runAs: root
+shell: bash
+timeoutInSeconds: 1800
+env:
+  variables:
+    CCA_PYTHON_BIN: /usr/bin/python3.11
+    SOURCE_SHA: ${sourceSha}
+    BACKUP_COMPARTMENT_ID: ${backupCompartmentId}
+    BACKUP_NAMESPACE: ${backupNamespace}
+    BACKUP_BUCKET: ${backupBucket}
+    BACKUP_AGE_RECIPIENT: ${backupAgeRecipient}
+    OCIR_REGISTRY: ${ocirRegistry}
+  vaultVariables:
+    OCIR_USERNAME: ${ocirUserVaultId}
+    OCIR_AUTH_TOKEN: ${ocirAuthVaultId}
+files:
+  - source: /
+    destination: /opt/code-clash-arena/staging/backend
+steps:
+  - stepType: Command
+    name: Authenticate container registry
+    command: |
+      set -euo pipefail
+      printf '%s' "$OCIR_AUTH_TOKEN" | /usr/bin/docker login "$OCIR_REGISTRY" --username "$OCIR_USERNAME" --password-stdin >/dev/null
+    timeoutInSeconds: 120
+  - stepType: Command
+    name: Backup, migrate, and activate backend release
+    command: |
+      set -euo pipefail
+      /usr/bin/bash /opt/code-clash-arena/staging/backend/ops/install.sh deploy
+    timeoutInSeconds: 1500
+    onFailure:
+      - stepType: Command
+        name: Restore previous backend release
+        command: |
+          set +e
+          ROLLBACK_ONLY_IF_PENDING=true /usr/bin/bash /opt/code-clash-arena/staging/backend/ops/install.sh rollback
+          rollback_status=$?
+          /usr/bin/docker logout "$OCIR_REGISTRY" >/dev/null 2>&1
+          exit "$rollback_status"
+        timeoutInSeconds: 300
+  - stepType: Command
+    name: Remove registry session
+    command: |
+      set -euo pipefail
+      /usr/bin/docker logout "$OCIR_REGISTRY" >/dev/null
+    timeoutInSeconds: 60

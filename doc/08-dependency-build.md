@@ -17,7 +17,7 @@
 | Frontend Node | 22.22.2 이상 또는 24.15 이상 24.x, CI는 24 | `package.json` engines, Actions setup-node |
 | Frontend build/test | Vite 8.2.1, Vitest 4.1.11 | npm lockfile과 scripts |
 | npm | 10~11, lockfile v3 | `package.json` engines, `npm ci` |
-| Engine image | Ubuntu 24.04, Java 21, Node 24.18.0, Python 3.12 계열, GCC/G++ 13 계열 | `engine/Dockerfile`, 5개 언어 Docker 계약 |
+| Engine image | digest 고정 Ubuntu 24.04/Node 24.18.0, Ubuntu 2026-08-10 snapshot, Java 21, Python 3.12 계열, GCC/G++ 13 계열 | `engine/Dockerfile`, 5개 언어 Docker 계약 |
 
 Node 20은 지원 종료 상태라 CI 기준에서 제거했다. Node 22는 개발 환경 호환을 위해 최소 22.22.2부터 허용하고, CI와 Docker engine은 동일한 활성 LTS 계열인 Node 24를 사용한다. React 18→19 같은 major 변경은 DEP-01 범위에 포함하지 않는다.
 
@@ -68,11 +68,18 @@ Vite entry는 `frontend/index.html`과 `src/index.jsx`다. JSX를 포함하는 �
 4. 변경 영역의 빠른 gate를 실행하고, DB 또는 engine 경계가 바뀌면 release 통합 gate도 실행한다.
 5. 지원 행렬, 예외 사유, 트러블슈팅과 roadmap 완료 기록을 갱신한다.
 
+## M4 공급망 승격
+
+- engine의 Node·Ubuntu base는 multi-architecture manifest digest로, Ubuntu package index는 날짜가 고정된 snapshot으로 해석한다. build에는 source commit epoch를 전달한다.
+- delivery의 backend JAR은 commit timestamp를 Maven output timestamp로 사용하고, frontend/backend bundle은 고정 timestamp·정렬 경로의 deterministic ZIP으로 만든다.
+- backend runtime의 engine·migration·MySQL·Redis image는 digest identity와 `linux/amd64`만 허용한다. 배포용 AMD64 job에서 실제 image와 migration을 검사하고, 별도 amd64/native ARM64 Release Contract까지 통과한 source SHA를 immutable OCI artifact로 승격한다.
+- dependency SBOM, high severity scan과 GitHub artifact attestation을 배포 조건으로 둔다. 모든 workflow action은 commit SHA로 고정한다.
+
 ## 현재 제약
 
-- Dependabot은 vulnerability alert와 Security Update만 제공하며 정기 version update는 자동화하지 않는다. SBOM, image scan/signature, immutable artifact promotion은 아직 없고 M4 `OPS-02`에서 다룬다.
-- Ubuntu package 설치는 이미지 build 시점의 patch를 가져오므로 digest 기반 완전 재현성은 아직 보장하지 않는다. Node base는 명시적 patch tag를 사용한다.
-- ARM workflow 구성과 로컬 x64 회귀는 확인했지만 GitHub-hosted native ARM64 실행 결과는 아직 없다. OCI 대상 VM의 OS·Docker·artifact 검증은 REL-02에서 별도로 수행한다.
+- Dependabot은 vulnerability alert와 Security Update만 제공하며 정기 version update는 자동화하지 않는다. snapshot/base digest 갱신도 별도 dependency PR에서 scan·다섯 언어·두 architecture 계약을 다시 확인한다.
+- OPS-02 공급망 workflow는 구현했지만 OCI environment에서 artifact upload·attestation·VM 승격을 아직 실행하지 않았다.
+- GitHub-hosted amd64/native ARM64 Release Gate는 통과했다. 실제 OCI 대상은 AMD64 Oracle Linux 9.8이며 VM의 Docker·artifact 검증은 OPS-02·REL-02에서 별도로 수행한다.
 - React 19, Vite/Vitest의 다음 major, Spring Boot 4는 자동 갱신 대상이 아니다.
 
 ## 공식 기준

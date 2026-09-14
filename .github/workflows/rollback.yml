@@ -1,0 +1,172 @@
+name: Production Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      component:
+        description: Component whose previous successful release must be restored
+        required: true
+        type: choice
+        options: [frontend, backend]
+
+permissions:
+  contents: read
+  deployments: write
+
+concurrency:
+  group: production-${{ inputs.component }}
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production-${{ inputs.component }}
+    env:
+      COMPONENT: ${{ inputs.component }}
+      OCI_REGION: ${{ vars.OCI_REGION || 'ap-tokyo-1' }}
+      OCI_ROLLBACK_PIPELINE_OCID: ${{ inputs.component == 'frontend' && vars.OCI_FRONTEND_ROLLBACK_PIPELINE_OCID || vars.OCI_BACKEND_ROLLBACK_PIPELINE_OCID }}
+      OCI_OCIR_REGISTRY: ${{ vars.OCI_OCIR_REGISTRY }}
+      OCIR_USER_VAULT_ID: ${{ vars.OCIR_USER_VAULT_ID }}
+      OCIR_AUTH_VAULT_ID: ${{ vars.OCIR_AUTH_VAULT_ID }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11'
+
+      - name: Resolve current and previous successful releases
+        id: releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+
+          repository = os.environ["GITHUB_REPOSITORY"]
+          environment = f"production-{os.environ['COMPONENT']}"
+          deployments = json.loads(subprocess.check_output([
+              "gh", "api", "--method", "GET", f"repos/{repository}/deployments",
+              "-f", f"environment={environment}", "-f", "per_page=100",
+          ], text=True))
+          successful = []
+          for deployment in deployments:
+              statuses = json.loads(subprocess.check_output([
+                  "gh", "api", "--method", "GET",
+                  f"repos/{repository}/deployments/{deployment['id']}/statuses", "-f", "per_page=1",
+              ], text=True))
+              sha = deployment["sha"]
+              if statuses and statuses[0].get("state") == "success" and sha not in successful:
+                  successful.append(sha)
+              if len(successful) == 2:
+                  break
+          if len(successful) != 2:
+              raise SystemExit("two distinct successful component releases are required for rollback")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as stream:
+              stream.write(f"spec_version={successful[0]}\n")
+              stream.write(f"target_sha={successful[1]}\n")
+          PY
+
+      - name: Validate rollback configuration and configure OCI CLI
+        env:
+          OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
+          OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
+          OCI_API_KEY_FINGERPRINT: ${{ secrets.OCI_API_KEY_FINGERPRINT }}
+          OCI_API_PRIVATE_KEY: ${{ secrets.OCI_API_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$OCI_REGION" = ap-tokyo-1
+          for value in OCI_ROLLBACK_PIPELINE_OCID OCI_TENANCY_OCID OCI_USER_OCID OCI_API_KEY_FINGERPRINT OCI_API_PRIVATE_KEY; do
+            test -n "${!value:-}"
+          done
+          if [[ "$COMPONENT" == backend ]]; then
+            for value in OCI_OCIR_REGISTRY OCIR_USER_VAULT_ID OCIR_AUTH_VAULT_ID; do test -n "${!value:-}"; done
+          fi
+          python3 -m pip install --disable-pip-version-check 'oci-cli==3.92.0'
+          umask 077
+          mkdir -p "$RUNNER_TEMP/oci"
+          printf '%s' "$OCI_API_PRIVATE_KEY" > "$RUNNER_TEMP/oci/api_key.pem"
+          {
+            printf '[DEFAULT]\nuser=%s\nfingerprint=%s\ntenancy=%s\nregion=%s\nkey_file=%s\n' \
+              "$OCI_USER_OCID" "$OCI_API_KEY_FINGERPRINT" "$OCI_TENANCY_OCID" \
+              "$OCI_REGION" "$RUNNER_TEMP/oci/api_key.pem"
+          } > "$RUNNER_TEMP/oci/config"
+          printf 'OCI_CLI_CONFIG_FILE=%s\n' "$RUNNER_TEMP/oci/config" >> "$GITHUB_ENV"
+
+      - name: Create rollback deployment record
+        id: github-deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ steps.releases.outputs.target_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$TARGET_SHA" "$COMPONENT" > "$RUNNER_TEMP/github-deployment.json" <<'PY'
+          import json
+          import sys
+          print(json.dumps({
+              "ref": sys.argv[1], "environment": f"production-{sys.argv[2]}",
+              "description": "Explicit rollback to the previous successful release",
+              "auto_merge": False, "required_contexts": [], "transient_environment": False,
+          }))
+          PY
+          gh api --method POST "repos/$GITHUB_REPOSITORY/deployments" \
+            --input "$RUNNER_TEMP/github-deployment.json" > "$RUNNER_TEMP/github-deployment-response.json"
+          deployment_id="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["id"])' "$RUNNER_TEMP/github-deployment-response.json")"
+          printf 'id=%s\n' "$deployment_id" >> "$GITHUB_OUTPUT"
+
+      - name: Activate previous release through OCI DevOps
+        id: oci-rollback
+        env:
+          SPEC_VERSION: ${{ steps.releases.outputs.spec_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          arguments=(
+            --pipeline-id "$OCI_ROLLBACK_PIPELINE_OCID"
+            --argument "artifactVersion=$SPEC_VERSION"
+            --receipt "$RUNNER_TEMP/rollback-oci-deployment.json"
+          )
+          if [[ "$COMPONENT" == backend ]]; then
+            arguments+=(
+              --argument "ocirRegistry=$OCI_OCIR_REGISTRY"
+              --argument "ocirUserVaultId=$OCIR_USER_VAULT_ID"
+              --argument "ocirAuthVaultId=$OCIR_AUTH_VAULT_ID"
+            )
+          fi
+          python3 deploy/common/oci_deploy.py deploy "${arguments[@]}"
+
+      - name: Complete rollback deployment record
+        if: always() && steps.github-deployment.outputs.id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOYMENT_ID: ${{ steps.github-deployment.outputs.id }}
+          ROLLBACK_RESULT: ${{ steps.oci-rollback.outcome }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          state=failure
+          if [[ "$ROLLBACK_RESULT" == success ]]; then state=success; fi
+          python3 - "$state" "$COMPONENT" > "$RUNNER_TEMP/github-deployment-status.json" <<'PY'
+          import json
+          import os
+          import sys
+          print(json.dumps({
+              "state": sys.argv[1], "environment": f"production-{sys.argv[2]}",
+              "description": "Explicit rollback result",
+              "log_url": f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}",
+          }))
+          PY
+          gh api --method POST "repos/$GITHUB_REPOSITORY/deployments/$DEPLOYMENT_ID/statuses" \
+            --input "$RUNNER_TEMP/github-deployment-status.json" >/dev/null
+
+      - name: Remove local deployment credentials
+        if: always()
+        shell: bash
+        run: rm -rf -- "$RUNNER_TEMP/oci" "$RUNNER_TEMP/github-deployment.json" "$RUNNER_TEMP/github-deployment-response.json"

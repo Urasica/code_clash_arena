@@ -1,0 +1,27 @@
+version: 1.0
+component: deployment
+runAs: ocarun
+shell: bash
+timeoutInSeconds: 900
+env:
+  variables:
+    CCA_PYTHON_BIN: /usr/bin/python3.11
+    SOURCE_SHA: ${sourceSha}
+    PUBLIC_ORIGIN: ${publicOrigin}
+files:
+  - source: /
+    destination: /opt/code-clash-arena/staging/frontend
+steps:
+  - stepType: Command
+    name: Verify and activate frontend release
+    command: |
+      set -euo pipefail
+      /usr/bin/bash /opt/code-clash-arena/staging/frontend/ops/install.sh deploy
+    timeoutInSeconds: 600
+    onFailure:
+      - stepType: Command
+        name: Restore previous frontend release
+        command: |
+          set -euo pipefail
+          ROLLBACK_ONLY_IF_PENDING=true /usr/bin/bash /opt/code-clash-arena/staging/frontend/ops/install.sh rollback
+        timeoutInSeconds: 180

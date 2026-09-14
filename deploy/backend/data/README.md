@@ -73,7 +73,7 @@ python deploy/backend/data/datactl.py stop --project cca-data-production --secre
 
 운영 volume 제거·기존 DB 복원·object 삭제는 이 도구가 제공하지 않는다.
 
-## ARM-01 이후 실환경 확인
+## OPS-02 최초 배포 이후 실환경 확인
 
 실제 VM 정보가 준비되면 다음 증거를 같은 배포 시점에 수집한다. 자격증명·공인 IP 전체 값·제출 코드 원문은 기록에서 가린다.
 
@@ -89,4 +89,4 @@ python deploy/backend/data/datactl.py stop --project cca-data-production --secre
 
 단위 검사는 secret 비노출·권한/ACL 구성·잘못된 업로드/복원 입력 거부와 실패 진단의 허용 필드를 확인한다. Docker 통합 검사는 고유한 임시 project/volume만 만들고 MySQL 역할 분리, Redis key/명령 ACL, age 암호화 backup, source volume 제거 후 새 MySQL 복원, 빈 Redis 재시작을 확인한 뒤 삭제한다.
 
-실제 Tokyo OCI Object Storage 업로드·다운로드 복원과 VM의 외부 접근 차단은 수행하지 않았다. ARM-01 이후 동일 배포 VM에서 확인하며, 그 전까지 DATA-03은 `IN_PROGRESS — 구현 및 로컬 검증, VM 검증 대기`다.
+실제 Tokyo OCI Object Storage 업로드·다운로드 복원과 AMD64 VM의 외부 접근 차단은 수행하지 않았다. OPS-02 최초 배포 뒤 동일 VM에서 확인하며, 그 전까지 DATA-03은 `IN_PROGRESS — 구현 및 로컬 검증, VM 검증 대기`다.

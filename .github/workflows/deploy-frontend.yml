@@ -1,0 +1,217 @@
+name: Deploy Frontend
+
+on:
+  workflow_call:
+    inputs:
+      source_sha:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  deployments: write
+  id-token: write
+  attestations: write
+  artifact-metadata: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    environment: production-frontend
+    concurrency:
+      group: production-frontend
+      cancel-in-progress: false
+    env:
+      SOURCE_SHA: ${{ inputs.source_sha }}
+      PUBLIC_ORIGIN: ${{ vars.PUBLIC_ORIGIN }}
+      OCI_REGION: ${{ vars.OCI_REGION || 'ap-tokyo-1' }}
+      OCI_ARTIFACT_REPOSITORY_OCID: ${{ vars.OCI_ARTIFACT_REPOSITORY_OCID }}
+      OCI_DEPLOY_PIPELINE_OCID: ${{ vars.OCI_FRONTEND_DEPLOY_PIPELINE_OCID }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11'
+
+      - name: Validate target and deployment configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(uname -m)" = x86_64
+          python3 - "$PUBLIC_ORIGIN" <<'PY'
+          import sys
+          from deploy.frontend.verify import validate_origin
+
+          validate_origin(sys.argv[1])
+          PY
+          test "$OCI_REGION" = ap-tokyo-1
+          for value in OCI_ARTIFACT_REPOSITORY_OCID OCI_DEPLOY_PIPELINE_OCID; do
+            test -n "${!value:-}"
+          done
+
+      - name: Build and test the exact frontend artifact
+        working-directory: frontend
+        env:
+          VITE_API_BASE_URL: ${{ vars.PUBLIC_ORIGIN }}
+        run: |
+          npm ci
+          npm run audit
+          npm test
+          npm run build
+          npm sbom --sbom-format=spdx > ../frontend.spdx.json
+
+      - name: Assemble immutable frontend bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/frontend/build dist/frontend/ops
+          cp -R frontend/build/. dist/frontend/build/
+          cp deploy/frontend/install.sh deploy/frontend/verify.py dist/frontend/ops/
+          cp deploy/common/releasectl.py dist/frontend/ops/
+          chmod 0755 dist/frontend/ops/*.sh dist/frontend/ops/*.py
+          python3 - "$PUBLIC_ORIGIN" > "$RUNNER_TEMP/frontend-metadata.json" <<'PY'
+          import json
+          import sys
+          print(json.dumps({"public_origin": sys.argv[1].rstrip("/")}, sort_keys=True))
+          PY
+          python3 deploy/common/releasectl.py create --root dist/frontend \
+            --component frontend --source-sha "$SOURCE_SHA" \
+            --metadata-file "$RUNNER_TEMP/frontend-metadata.json"
+          python3 deploy/common/releasectl.py verify --root dist/frontend \
+            --component frontend --source-sha "$SOURCE_SHA"
+          python3 deploy/common/archive.py --root dist/frontend --output dist/frontend-bundle.zip
+
+      - name: Attest frontend bundle provenance
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-path: dist/frontend-bundle.zip
+
+      - name: Attest frontend dependency inventory
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-path: dist/frontend-bundle.zip
+          sbom-path: frontend.spdx.json
+
+      - name: Configure pinned OCI CLI
+        env:
+          OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
+          OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
+          OCI_API_KEY_FINGERPRINT: ${{ secrets.OCI_API_KEY_FINGERPRINT }}
+          OCI_API_PRIVATE_KEY: ${{ secrets.OCI_API_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for value in OCI_TENANCY_OCID OCI_USER_OCID OCI_API_KEY_FINGERPRINT OCI_API_PRIVATE_KEY; do
+            test -n "${!value:-}"
+          done
+          python3 -m pip install --disable-pip-version-check 'oci-cli==3.92.0'
+          umask 077
+          mkdir -p "$RUNNER_TEMP/oci"
+          printf '%s' "$OCI_API_PRIVATE_KEY" > "$RUNNER_TEMP/oci/api_key.pem"
+          {
+            printf '[DEFAULT]\n'
+            printf 'user=%s\n' "$OCI_USER_OCID"
+            printf 'fingerprint=%s\n' "$OCI_API_KEY_FINGERPRINT"
+            printf 'tenancy=%s\n' "$OCI_TENANCY_OCID"
+            printf 'region=%s\n' "$OCI_REGION"
+            printf 'key_file=%s\n' "$RUNNER_TEMP/oci/api_key.pem"
+          } > "$RUNNER_TEMP/oci/config"
+          printf 'OCI_CLI_CONFIG_FILE=%s\n' "$RUNNER_TEMP/oci/config" >> "$GITHUB_ENV"
+
+      - name: Publish immutable OCI artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 deploy/common/oci_deploy.py publish \
+            --repository-id "$OCI_ARTIFACT_REPOSITORY_OCID" \
+            --artifact-path code-clash-arena/frontend/bundle.zip \
+            --version "$SOURCE_SHA" --file dist/frontend-bundle.zip
+          python3 deploy/common/oci_deploy.py publish \
+            --repository-id "$OCI_ARTIFACT_REPOSITORY_OCID" \
+            --artifact-path code-clash-arena/frontend/deployment.yaml \
+            --version "$SOURCE_SHA" --file deploy/frontend/oci-deployment.yaml
+          python3 deploy/common/oci_deploy.py publish \
+            --repository-id "$OCI_ARTIFACT_REPOSITORY_OCID" \
+            --artifact-path code-clash-arena/frontend/rollback.yaml \
+            --version "$SOURCE_SHA" --file deploy/frontend/oci-rollback.yaml
+
+      - name: Ensure this release is still current main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          test "$(git rev-parse origin/main)" = "$SOURCE_SHA"
+
+      - name: Create GitHub deployment record
+        id: github-deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$SOURCE_SHA" > "$RUNNER_TEMP/github-deployment.json" <<'PY'
+          import json
+          import sys
+          print(json.dumps({
+              "ref": sys.argv[1], "environment": "production-frontend",
+              "auto_merge": False, "required_contexts": [], "transient_environment": False,
+          }))
+          PY
+          gh api --method POST "repos/$GITHUB_REPOSITORY/deployments" \
+            --input "$RUNNER_TEMP/github-deployment.json" > "$RUNNER_TEMP/github-deployment-response.json"
+          deployment_id="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["id"])' "$RUNNER_TEMP/github-deployment-response.json")"
+          printf 'id=%s\n' "$deployment_id" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy frontend through OCI DevOps
+        id: oci-deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 deploy/common/oci_deploy.py deploy \
+            --pipeline-id "$OCI_DEPLOY_PIPELINE_OCID" \
+            --argument "artifactVersion=$SOURCE_SHA" \
+            --argument "sourceSha=$SOURCE_SHA" \
+            --argument "publicOrigin=${PUBLIC_ORIGIN%/}" \
+            --receipt "$RUNNER_TEMP/frontend-oci-deployment.json"
+
+      - name: Complete GitHub deployment record
+        if: always() && steps.github-deployment.outputs.id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOYMENT_ID: ${{ steps.github-deployment.outputs.id }}
+          OCI_RESULT: ${{ steps.oci-deploy.outcome }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          state=failure
+          if [[ "$OCI_RESULT" == success ]]; then state=success; fi
+          python3 - "$state" "$PUBLIC_ORIGIN" > "$RUNNER_TEMP/github-deployment-status.json" <<'PY'
+          import json
+          import os
+          import sys
+          print(json.dumps({
+              "state": sys.argv[1], "environment": "production-frontend",
+              "environment_url": sys.argv[2].rstrip("/"),
+              "log_url": f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}",
+          }))
+          PY
+          gh api --method POST "repos/$GITHUB_REPOSITORY/deployments/$DEPLOYMENT_ID/statuses" \
+            --input "$RUNNER_TEMP/github-deployment-status.json" >/dev/null
+
+      - name: Remove local deployment credentials
+        if: always()
+        shell: bash
+        run: rm -rf -- "$RUNNER_TEMP/oci" "$RUNNER_TEMP/github-deployment.json" "$RUNNER_TEMP/github-deployment-response.json"

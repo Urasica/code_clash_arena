@@ -1,0 +1,386 @@
+name: Deploy Backend
+
+on:
+  workflow_call:
+    inputs:
+      source_sha:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  deployments: write
+  id-token: write
+  attestations: write
+  artifact-metadata: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: production-backend
+    concurrency:
+      group: production-backend
+      cancel-in-progress: false
+    env:
+      SOURCE_SHA: ${{ inputs.source_sha }}
+      OCI_REGION: ${{ vars.OCI_REGION || 'ap-tokyo-1' }}
+      OCI_ARTIFACT_REPOSITORY_OCID: ${{ vars.OCI_ARTIFACT_REPOSITORY_OCID }}
+      OCI_DEPLOY_PIPELINE_OCID: ${{ vars.OCI_BACKEND_DEPLOY_PIPELINE_OCID }}
+      OCI_OCIR_REGISTRY: ${{ vars.OCI_OCIR_REGISTRY }}
+      OCI_OCIR_NAMESPACE: ${{ vars.OCI_OCIR_NAMESPACE }}
+      OCI_ENGINE_REPOSITORY: ${{ vars.OCI_ENGINE_REPOSITORY }}
+      ENGINE_REPOSITORY: ${{ format('{0}/{1}/{2}', vars.OCI_OCIR_REGISTRY, vars.OCI_OCIR_NAMESPACE, vars.OCI_ENGINE_REPOSITORY) }}
+      ENGINE_TAG: ${{ format('{0}/{1}/{2}:{3}', vars.OCI_OCIR_REGISTRY, vars.OCI_OCIR_NAMESPACE, vars.OCI_ENGINE_REPOSITORY, inputs.source_sha) }}
+      ENGINE_POLICY_VERSION: ${{ vars.ENGINE_POLICY_VERSION || 'm3-v1' }}
+      MIGRATION_IMAGE: ${{ vars.MIGRATION_IMAGE }}
+      DATA_MYSQL_IMAGE: ${{ vars.DATA_MYSQL_IMAGE }}
+      DATA_REDIS_IMAGE: ${{ vars.DATA_REDIS_IMAGE }}
+      BACKUP_COMPARTMENT_ID: ${{ vars.BACKUP_COMPARTMENT_ID }}
+      BACKUP_NAMESPACE: ${{ vars.BACKUP_NAMESPACE }}
+      BACKUP_BUCKET: ${{ vars.BACKUP_BUCKET }}
+      BACKUP_AGE_RECIPIENT: ${{ vars.BACKUP_AGE_RECIPIENT }}
+      OCIR_USER_VAULT_ID: ${{ vars.OCIR_USER_VAULT_ID }}
+      OCIR_AUTH_VAULT_ID: ${{ vars.OCIR_AUTH_VAULT_ID }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11'
+
+      - name: Validate target and deployment configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(uname -m)" = x86_64
+          docker_arch="$(docker info --format '{{.Architecture}}')"
+          [[ "$docker_arch" == x86_64 || "$docker_arch" == amd64 ]]
+          test "$OCI_REGION" = ap-tokyo-1
+          for image in MIGRATION_IMAGE DATA_MYSQL_IMAGE DATA_REDIS_IMAGE; do
+            [[ "${!image}" =~ ^[^@[:space:]]+@sha256:[0-9a-f]{64}$ ]]
+          done
+          for value in OCI_ARTIFACT_REPOSITORY_OCID OCI_DEPLOY_PIPELINE_OCID OCI_OCIR_REGISTRY OCI_OCIR_NAMESPACE OCI_ENGINE_REPOSITORY ENGINE_POLICY_VERSION BACKUP_COMPARTMENT_ID BACKUP_NAMESPACE BACKUP_BUCKET BACKUP_AGE_RECIPIENT OCIR_USER_VAULT_ID OCIR_AUTH_VAULT_ID; do
+            test -n "${!value:-}"
+          done
+          test "$ENGINE_REPOSITORY" = "$OCI_OCIR_REGISTRY/$OCI_OCIR_NAMESPACE/$OCI_ENGINE_REPOSITORY"
+          test "$ENGINE_TAG" = "$ENGINE_REPOSITORY:$SOURCE_SHA"
+
+      - name: Build and test the exact backend JAR
+        working-directory: backend/code
+        shell: bash
+        run: |
+          set -euo pipefail
+          output_timestamp="$(git show -s --format=%cI "$SOURCE_SHA")"
+          sh mvnw -Dproject.build.outputTimestamp="$output_timestamp" package -q
+
+      - name: Rehearse the exact migration image on disposable MySQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          migration_root="$(mktemp -d)"
+          migration_project="cca-data-migration-${GITHUB_RUN_ID}"
+          cleanup() {
+            DATA_PROJECT_NAME="$migration_project" DATA_SECRETS_DIR="$migration_root/secrets" DATA_PURPOSE=service \
+              docker compose -f deploy/backend/data/compose.yaml -p "$migration_project" \
+              down --volumes --remove-orphans >/dev/null 2>&1 || true
+            rm -rf -- "$migration_root"
+          }
+          trap cleanup EXIT
+          python3 deploy/backend/data/datactl.py init-secrets --directory "$migration_root/secrets"
+          MYSQL_IMAGE="$DATA_MYSQL_IMAGE" REDIS_IMAGE="$DATA_REDIS_IMAGE" \
+            python3 deploy/backend/data/datactl.py start --project "$migration_project" --secrets "$migration_root/secrets"
+          for image in "$DATA_MYSQL_IMAGE" "$DATA_REDIS_IMAGE"; do
+            test "$(docker image inspect "$image" --format '{{.Os}}/{{.Architecture}}')" = linux/amd64
+          done
+          docker pull "$MIGRATION_IMAGE"
+          test "$(docker image inspect "$MIGRATION_IMAGE" --format '{{.Os}}/{{.Architecture}}')" = linux/amd64
+          CCA_DATA_SECRETS_DIR="$migration_root/secrets" \
+            CCA_MIGRATIONS_DIR="$GITHUB_WORKSPACE/backend/code/src/main/resources/db/migration/mysql" \
+            MIGRATION_IMAGE="$MIGRATION_IMAGE" bash deploy/backend/application/migrate.sh plan
+          CCA_DATA_SECRETS_DIR="$migration_root/secrets" \
+            CCA_MIGRATIONS_DIR="$GITHUB_WORKSPACE/backend/code/src/main/resources/db/migration/mysql" \
+            MIGRATION_IMAGE="$MIGRATION_IMAGE" bash deploy/backend/application/migrate.sh apply
+
+      - name: Reject high-severity migration image vulnerabilities
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7
+        with:
+          image: ${{ env.MIGRATION_IMAGE }}
+          fail-build: true
+          severity-cutoff: high
+          only-fixed: true
+          output-format: table
+
+      - name: Reject high-severity MySQL image vulnerabilities
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7
+        with:
+          image: ${{ env.DATA_MYSQL_IMAGE }}
+          fail-build: true
+          severity-cutoff: high
+          only-fixed: true
+          output-format: table
+
+      - name: Reject high-severity Redis image vulnerabilities
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7
+        with:
+          image: ${{ env.DATA_REDIS_IMAGE }}
+          fail-build: true
+          severity-cutoff: high
+          only-fixed: true
+          output-format: table
+
+      - name: Build and test the exact native engine image
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_epoch="$(git show -s --format=%ct "$SOURCE_SHA")"
+          docker build --pull --build-arg "SOURCE_DATE_EPOCH=$source_epoch" --tag "$ENGINE_TAG" engine
+          test "$(docker image inspect "$ENGINE_TAG" --format '{{.Os}}/{{.Architecture}}')" = linux/amd64
+          CCA_ENGINE_TEST_IMAGE="$ENGINE_TAG" CCA_REQUIRE_DOCKER_TESTS=true \
+            python3 -m unittest discover -s engine/tests -v
+
+      - name: Generate engine SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          image: ${{ env.ENGINE_TAG }}
+          format: spdx-json
+          output-file: engine.spdx.json
+          upload-artifact: false
+
+      - name: Reject high-severity engine vulnerabilities
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7
+        with:
+          image: ${{ env.ENGINE_TAG }}
+          fail-build: true
+          severity-cutoff: high
+          output-format: table
+
+      - name: Generate backend SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          file: backend/code/target/code-0.0.1-SNAPSHOT.jar
+          format: spdx-json
+          output-file: backend.spdx.json
+          upload-artifact: false
+
+      - name: Reject high-severity backend vulnerabilities
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7
+        with:
+          sbom: backend.spdx.json
+          fail-build: true
+          severity-cutoff: high
+          output-format: table
+
+      - name: Push the tested engine image
+        id: engine
+        env:
+          OCI_OCIR_USERNAME: ${{ secrets.OCI_OCIR_USERNAME }}
+          OCI_OCIR_AUTH_TOKEN: ${{ secrets.OCI_OCIR_AUTH_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$OCI_OCIR_USERNAME"
+          test -n "$OCI_OCIR_AUTH_TOKEN"
+          export DOCKER_CONFIG="$RUNNER_TEMP/ocir-docker"
+          mkdir -p "$DOCKER_CONFIG"
+          cleanup_registry() {
+            docker logout "$OCI_OCIR_REGISTRY" >/dev/null 2>&1 || true
+            rm -rf -- "$DOCKER_CONFIG"
+          }
+          trap cleanup_registry EXIT
+          printf '%s' "$OCI_OCIR_AUTH_TOKEN" | docker login "$OCI_OCIR_REGISTRY" \
+            --username "$OCI_OCIR_USERNAME" --password-stdin >/dev/null
+          docker push "$ENGINE_TAG"
+          engine_ref="$(docker image inspect "$ENGINE_TAG" --format '{{range .RepoDigests}}{{println .}}{{end}}' | grep -F "${ENGINE_REPOSITORY}@" | head -n 1)"
+          [[ "$engine_ref" =~ ^[^@[:space:]]+@sha256:[0-9a-f]{64}$ ]]
+          printf 'reference=%s\n' "$engine_ref" >> "$GITHUB_OUTPUT"
+          printf 'digest=%s\n' "${engine_ref##*@}" >> "$GITHUB_OUTPUT"
+
+      - name: Attest engine provenance
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-name: ${{ env.ENGINE_REPOSITORY }}
+          subject-digest: ${{ steps.engine.outputs.digest }}
+
+      - name: Attest engine dependency inventory
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-name: ${{ env.ENGINE_REPOSITORY }}
+          subject-digest: ${{ steps.engine.outputs.digest }}
+          sbom-path: engine.spdx.json
+
+      - name: Assemble immutable backend bundle
+        env:
+          ENGINE_IMAGE: ${{ steps.engine.outputs.reference }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/backend/ops dist/backend/data dist/backend/migrations
+          cp backend/code/target/code-0.0.1-SNAPSHOT.jar dist/backend/app.jar
+          cp -R deploy/backend/data/. dist/backend/data/
+          cp -R backend/code/src/main/resources/db/migration/mysql/. dist/backend/migrations/
+          cp deploy/backend/application/install.sh deploy/backend/application/backup.sh \
+            deploy/backend/application/migrate.sh deploy/backend/application/verify.py dist/backend/ops/
+          cp deploy/common/releasectl.py dist/backend/ops/
+          chmod 0755 dist/backend/ops/*.sh dist/backend/ops/*.py dist/backend/data/datactl.py
+          {
+            printf 'DATA_MYSQL_IMAGE=%s\n' "$DATA_MYSQL_IMAGE"
+            printf 'DATA_REDIS_IMAGE=%s\n' "$DATA_REDIS_IMAGE"
+            printf 'ENGINE_IMAGE=%s\n' "$ENGINE_IMAGE"
+            printf 'ENGINE_POLICY_VERSION=%s\n' "$ENGINE_POLICY_VERSION"
+            printf 'MIGRATION_IMAGE=%s\n' "$MIGRATION_IMAGE"
+          } > dist/backend/runtime.env
+          python3 - "$ENGINE_IMAGE" "$MIGRATION_IMAGE" "$DATA_MYSQL_IMAGE" "$DATA_REDIS_IMAGE" "$ENGINE_POLICY_VERSION" > "$RUNNER_TEMP/backend-metadata.json" <<'PY'
+          import json
+          import sys
+          print(json.dumps({
+              "engine_image": sys.argv[1], "migration_image": sys.argv[2],
+              "data_mysql_image": sys.argv[3], "data_redis_image": sys.argv[4],
+              "engine_policy_version": sys.argv[5],
+          }, sort_keys=True))
+          PY
+          python3 deploy/common/releasectl.py create --root dist/backend \
+            --component backend --source-sha "$SOURCE_SHA" \
+            --metadata-file "$RUNNER_TEMP/backend-metadata.json"
+          python3 deploy/common/releasectl.py verify --root dist/backend \
+            --component backend --source-sha "$SOURCE_SHA"
+          python3 deploy/common/archive.py --root dist/backend --output dist/backend-bundle.zip
+
+      - name: Attest backend bundle provenance
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-path: dist/backend-bundle.zip
+
+      - name: Attest backend dependency inventory
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-path: dist/backend-bundle.zip
+          sbom-path: backend.spdx.json
+
+      - name: Configure pinned OCI CLI
+        env:
+          OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
+          OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
+          OCI_API_KEY_FINGERPRINT: ${{ secrets.OCI_API_KEY_FINGERPRINT }}
+          OCI_API_PRIVATE_KEY: ${{ secrets.OCI_API_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for value in OCI_TENANCY_OCID OCI_USER_OCID OCI_API_KEY_FINGERPRINT OCI_API_PRIVATE_KEY; do
+            test -n "${!value:-}"
+          done
+          python3 -m pip install --disable-pip-version-check 'oci-cli==3.92.0'
+          umask 077
+          mkdir -p "$RUNNER_TEMP/oci"
+          printf '%s' "$OCI_API_PRIVATE_KEY" > "$RUNNER_TEMP/oci/api_key.pem"
+          {
+            printf '[DEFAULT]\n'
+            printf 'user=%s\n' "$OCI_USER_OCID"
+            printf 'fingerprint=%s\n' "$OCI_API_KEY_FINGERPRINT"
+            printf 'tenancy=%s\n' "$OCI_TENANCY_OCID"
+            printf 'region=%s\n' "$OCI_REGION"
+            printf 'key_file=%s\n' "$RUNNER_TEMP/oci/api_key.pem"
+          } > "$RUNNER_TEMP/oci/config"
+          printf 'OCI_CLI_CONFIG_FILE=%s\n' "$RUNNER_TEMP/oci/config" >> "$GITHUB_ENV"
+
+      - name: Publish immutable OCI artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 deploy/common/oci_deploy.py publish \
+            --repository-id "$OCI_ARTIFACT_REPOSITORY_OCID" \
+            --artifact-path code-clash-arena/backend/bundle.zip \
+            --version "$SOURCE_SHA" --file dist/backend-bundle.zip
+          python3 deploy/common/oci_deploy.py publish \
+            --repository-id "$OCI_ARTIFACT_REPOSITORY_OCID" \
+            --artifact-path code-clash-arena/backend/deployment.yaml \
+            --version "$SOURCE_SHA" --file deploy/backend/application/oci-deployment.yaml
+          python3 deploy/common/oci_deploy.py publish \
+            --repository-id "$OCI_ARTIFACT_REPOSITORY_OCID" \
+            --artifact-path code-clash-arena/backend/rollback.yaml \
+            --version "$SOURCE_SHA" --file deploy/backend/application/oci-rollback.yaml
+
+      - name: Ensure this release is still current main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          test "$(git rev-parse origin/main)" = "$SOURCE_SHA"
+
+      - name: Create GitHub deployment record
+        id: github-deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$SOURCE_SHA" > "$RUNNER_TEMP/github-deployment.json" <<'PY'
+          import json
+          import sys
+          print(json.dumps({
+              "ref": sys.argv[1], "environment": "production-backend",
+              "auto_merge": False, "required_contexts": [], "transient_environment": False,
+          }))
+          PY
+          gh api --method POST "repos/$GITHUB_REPOSITORY/deployments" \
+            --input "$RUNNER_TEMP/github-deployment.json" > "$RUNNER_TEMP/github-deployment-response.json"
+          deployment_id="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["id"])' "$RUNNER_TEMP/github-deployment-response.json")"
+          printf 'id=%s\n' "$deployment_id" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy backend through OCI DevOps
+        id: oci-deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 deploy/common/oci_deploy.py deploy \
+            --pipeline-id "$OCI_DEPLOY_PIPELINE_OCID" \
+            --argument "artifactVersion=$SOURCE_SHA" \
+            --argument "sourceSha=$SOURCE_SHA" \
+            --argument "backupCompartmentId=$BACKUP_COMPARTMENT_ID" \
+            --argument "backupNamespace=$BACKUP_NAMESPACE" \
+            --argument "backupBucket=$BACKUP_BUCKET" \
+            --argument "backupAgeRecipient=$BACKUP_AGE_RECIPIENT" \
+            --argument "ocirRegistry=$OCI_OCIR_REGISTRY" \
+            --argument "ocirUserVaultId=$OCIR_USER_VAULT_ID" \
+            --argument "ocirAuthVaultId=$OCIR_AUTH_VAULT_ID" \
+            --receipt "$RUNNER_TEMP/backend-oci-deployment.json"
+
+      - name: Complete GitHub deployment record
+        if: always() && steps.github-deployment.outputs.id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOYMENT_ID: ${{ steps.github-deployment.outputs.id }}
+          OCI_RESULT: ${{ steps.oci-deploy.outcome }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          state=failure
+          if [[ "$OCI_RESULT" == success ]]; then state=success; fi
+          python3 - "$state" > "$RUNNER_TEMP/github-deployment-status.json" <<'PY'
+          import json
+          import os
+          import sys
+          print(json.dumps({
+              "state": sys.argv[1], "environment": "production-backend",
+              "log_url": f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}",
+          }))
+          PY
+          gh api --method POST "repos/$GITHUB_REPOSITORY/deployments/$DEPLOYMENT_ID/statuses" \
+            --input "$RUNNER_TEMP/github-deployment-status.json" >/dev/null
+
+      - name: Remove local deployment credentials
+        if: always()
+        shell: bash
+        run: |
+          rm -rf -- "$RUNNER_TEMP/oci" "$RUNNER_TEMP/github-deployment.json" "$RUNNER_TEMP/github-deployment-response.json"

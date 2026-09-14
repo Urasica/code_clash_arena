@@ -1,0 +1,151 @@
+name: Production Delivery
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      component:
+        description: Deployment unit to retry
+        required: true
+        default: changed
+        type: choice
+        options: [changed, frontend, backend, both]
+      source_sha:
+        description: Full commit SHA on main; defaults to current main
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  deployments: write
+  id-token: write
+  attestations: write
+  artifact-metadata: write
+
+concurrency:
+  group: production-delivery
+  cancel-in-progress: false
+
+jobs:
+  impact:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      source_sha: ${{ steps.changes.outputs.source_sha }}
+      frontend: ${{ steps.changes.outputs.frontend }}
+      backend: ${{ steps.changes.outputs.backend }}
+      any: ${{ steps.changes.outputs.any }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Resolve last successful component deployments
+        id: baselines
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+
+          repository = os.environ["GITHUB_REPOSITORY"]
+          output = os.environ["GITHUB_OUTPUT"]
+          for component in ("frontend", "backend"):
+              environment = f"production-{component}"
+              deployments = json.loads(subprocess.check_output([
+                  "gh", "api", "--method", "GET", f"repos/{repository}/deployments",
+                  "-f", f"environment={environment}", "-f", "per_page=100",
+              ], text=True))
+              baseline = ""
+              for deployment in deployments:
+                  statuses = json.loads(subprocess.check_output([
+                      "gh", "api", "--method", "GET",
+                      f"repos/{repository}/deployments/{deployment['id']}/statuses", "-f", "per_page=1",
+                  ], text=True))
+                  if statuses and statuses[0].get("state") == "success":
+                      baseline = deployment["sha"]
+                      break
+              with open(output, "a", encoding="utf-8") as stream:
+                  stream.write(f"{component}={baseline}\n")
+          PY
+
+      - name: Classify all changes since each successful deployment
+        id: changes
+        env:
+          REQUESTED_COMPONENT: ${{ inputs.component || 'changed' }}
+          REQUESTED_SHA: ${{ inputs.source_sha }}
+          FRONTEND_BASE: ${{ steps.baselines.outputs.frontend }}
+          BACKEND_BASE: ${{ steps.baselines.outputs.backend }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          source_sha="${REQUESTED_SHA:-$(git rev-parse origin/main)}"
+          [[ "$source_sha" =~ ^[0-9a-f]{40}$ ]]
+          git cat-file -e "${source_sha}^{commit}"
+          test "$source_sha" = "$(git rev-parse origin/main)"
+
+          classify_since() {
+            local baseline="$1"
+            local output="$2"
+            if [[ -z "$baseline" ]]; then
+              git ls-tree -r --name-only "$source_sha" > "$output"
+            elif [[ "$baseline" =~ ^[0-9a-f]{40}$ ]] && git merge-base --is-ancestor "$baseline" "$source_sha"; then
+              git diff --name-only "$baseline" "$source_sha" > "$output"
+            else
+              printf '%s\n' '.github/workflows/delivery.yml' > "$output"
+            fi
+          }
+
+          classify_since "$FRONTEND_BASE" "$RUNNER_TEMP/frontend-files.txt"
+          classify_since "$BACKEND_BASE" "$RUNNER_TEMP/backend-files.txt"
+          frontend="$(python3 deploy/common/impact.py --files-from "$RUNNER_TEMP/frontend-files.txt" | python3 -c 'import json,sys; print(str(json.load(sys.stdin)["frontend"]).lower())')"
+          backend="$(python3 deploy/common/impact.py --files-from "$RUNNER_TEMP/backend-files.txt" | python3 -c 'import json,sys; print(str(json.load(sys.stdin)["backend"]).lower())')"
+
+          case "$REQUESTED_COMPONENT" in
+            frontend) frontend=true; backend=false ;;
+            backend) frontend=false; backend=true ;;
+            both) frontend=true; backend=true ;;
+            changed) ;;
+            *) exit 1 ;;
+          esac
+          any=false
+          if [[ "$frontend" == true || "$backend" == true ]]; then any=true; fi
+          {
+            printf 'source_sha=%s\n' "$source_sha"
+            printf 'frontend=%s\n' "$frontend"
+            printf 'backend=%s\n' "$backend"
+            printf 'any=%s\n' "$any"
+          } >> "$GITHUB_OUTPUT"
+
+  release-contract:
+    needs: impact
+    if: needs.impact.outputs.any == 'true'
+    uses: ./.github/workflows/release-contract.yml
+    with:
+      source_sha: ${{ needs.impact.outputs.source_sha }}
+
+  deploy-backend:
+    needs: [impact, release-contract]
+    if: needs.impact.outputs.backend == 'true'
+    uses: ./.github/workflows/deploy-backend.yml
+    with:
+      source_sha: ${{ needs.impact.outputs.source_sha }}
+    secrets: inherit
+
+  deploy-frontend:
+    needs: [impact, release-contract, deploy-backend]
+    if: >-
+      always() &&
+      needs.release-contract.result == 'success' &&
+      needs.impact.outputs.frontend == 'true' &&
+      (needs.impact.outputs.backend != 'true' || needs.deploy-backend.result == 'success')
+    uses: ./.github/workflows/deploy-frontend.yml
+    with:
+      source_sha: ${{ needs.impact.outputs.source_sha }}
+    secrets: inherit

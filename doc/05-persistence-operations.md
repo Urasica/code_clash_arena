@@ -185,7 +185,7 @@ readiness에 포함되는 DB·Redis 검사가 네트워크 단절 상태에서 �
 
 두 서비스는 external egress가 없는 internal/non-attachable Docker network만 사용한다. 앱에는 생성한 secret 묶음의 `backend/` 하위 경로만 제공해 root·migration·backup 자격증명과 분리한다. 암호화 backup은 Tokyo OCI Object Storage의 승인된 비공개 bucket만 허용하며 instance principal과 overwrite 거부, 전송 checksum을 사용한다. 복원 도구는 새 `cca-restore-*` project의 빈 schema만 허용하고 기존 운영 DB를 덮어쓰거나 volume/object를 삭제하지 않는다.
 
-일회용 로컬 검사는 MySQL 역할별 DDL/DML 허용·거부, Redis prefix/관리 명령 거부, 암호화 snapshot, 별도 MySQL 복원과 Redis 빈 재시작을 확인했다. 실제 Private VM의 앱 연결·외부 차단과 Object Storage 왕복 복원은 ARM-01 이후 확인하므로 DATA-03은 아직 완료 상태가 아니다.
+일회용 로컬 검사는 MySQL 역할별 DDL/DML 허용·거부, Redis prefix/관리 명령 거부, 암호화 snapshot, 별도 MySQL 복원과 Redis 빈 재시작을 확인했다. 실제 AMD64 Private VM의 앱 연결·외부 차단과 Object Storage 왕복 복원은 OPS-02 최초 배포 뒤 REL-02에서 확인하므로 DATA-03은 아직 완료 상태가 아니다.
 
 ## 데이터 수명
 

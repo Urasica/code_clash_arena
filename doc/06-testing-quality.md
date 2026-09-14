@@ -93,7 +93,7 @@ npm.cmd run test:e2e
 
 ## CI 게이트
 
-NET-01에서 기존 Ubuntu/Windows `Fast regression` job에 Terraform `fmt/init/validate/test`를 추가했다. DATA-03에서는 두 OS에 secret·ACL·입력 단위 검사를 추가하고 Release Gate에 `age`와 일회용 MySQL·Redis backup/restore 검사를 연결했다. ARM-01은 Release Gate를 `ubuntu-latest` x64와 `ubuntu-24.04-arm` native ARM64 매트릭스로 실행하며 runner·Docker·engine image architecture를 먼저 대조한다. OCI provider와 upload 단위 검사는 mock이며 cloud secret이나 실제 apply/upload를 사용하지 않는다. 로컬 명령과 실제 검증 경계는 [OCI 구성 안내](../infra/oci/README.md)와 [운영 데이터 안내](../deploy/backend/data/README.md)에 있다. native ARM 원격 job은 아직 실행하지 않았다.
+NET-01에서 기존 Ubuntu/Windows `Fast regression` job에 Terraform `fmt/init/validate/test`를 추가했다. DATA-03에서는 두 OS에 secret·ACL·입력 단위 검사를 추가하고 Release Gate에 `age`와 일회용 MySQL·Redis backup/restore 검사를 연결했다. ARM-01은 Release Gate를 `ubuntu-latest` x64와 `ubuntu-24.04-arm` native ARM64 매트릭스로 실행하며 runner·Docker·engine image architecture를 먼저 대조한다. OCI provider와 upload 단위 검사는 mock이며 cloud secret이나 실제 apply/upload를 사용하지 않는다. 로컬 명령과 실제 검증 경계는 [OCI 구성 안내](../infra/oci/README.md)와 [운영 데이터 안내](../deploy/backend/data/README.md)에 있다. SHA `5bda5df`의 Release Gate `33871950779`에서 amd64/native ARM64 전체 계약이 통과했다. 실제 OCI 배포 job과 artifact는 AMD64로 고정한다.
 
 | workflow | 실행 조건 | 환경 | 범위 |
 | --- | --- | --- | --- |
@@ -129,16 +129,16 @@ init test는 runner 소유 bind mount에 쓰지 않고 유효한 map JSON을 std
 | compose/설정/문서 | compose config + diff check + 문서 링크 검사 |
 | OCI 네트워크 구성 | Terraform fmt/validate/mock tests + diff/link 검사. 실제 경계 완료에는 별도 승인 환경의 허용/차단 증거 필요 |
 | 운영 DB·Redis/backup | DATA 단위 검사 + 일회용 Docker backup/restore + 백엔드 실제 인프라 통합 6종. 완료에는 실제 Private VM 접근 대조군과 호스트 밖 복원 증거 필요 |
-| ARM 배포 artifact | native ARM runner architecture + frontend/build + backend jar + engine image architecture/hash + strict engine/infrastructure/browser contracts |
+| 다중 architecture 계약과 AMD64 배포 artifact | amd64/native ARM64 runner·Docker·image architecture + frontend/build + backend jar + strict engine/infrastructure/browser contracts, 실제 승격 bundle target `linux/amd64` |
 
 ## 현재 검증 공백
 
 - 실제 브라우저의 STOMP reconnect·세션 만료·disconnect 후 화면 복구와 replay E2E. 두 guest의 CONNECT/SUBSCRIBE/SEND와 PvP 결과는 보장하지만 transport 장애 중 재연결은 단위·백엔드 통합 계약으로 남아 있다.
 - 실제 Google 공급자 smoke는 수동으로 최초 성공·세션 복원·logout·동일 계정 재사용까지 확인했지만 CI에서는 실제 credential과 사용자 인증을 사용하지 않는다. 자동 gate는 claim·handler·계정 identity 계약까지만 보장한다.
 - Docker daemon/engine timeout 장애 주입과 저장 전달 보장(outbox/retry). DB/Redis readiness의 장애 감지·복구는 보장하지만 실패한 업무 요청의 재시도는 보장하지 않는다.
-- DATA-03은 로컬 암호화 backup/restore를 보장하지만 실제 Tokyo Object Storage 업로드·다운로드와 Edge/인터넷에서의 DB·Redis 차단은 ARM-01 이후 검증한다.
+- DATA-03은 로컬 암호화 backup/restore를 보장하지만 실제 Tokyo Object Storage 업로드·다운로드와 Edge/인터넷에서의 DB·Redis 차단은 OPS-02 최초 배포 뒤 REL-02에서 검증한다.
 
-원격 Windows/Linux PR Gate와 기존 x64 release workflow는 M2 `TEST-01`에서 성공했고 실제 Google 공급자 smoke는 `AUTH-01`에서 완료했다. native ARM release workflow의 실제 원격 성공은 아직 확인하지 않았다. 지원 버전·lockfile·정기 갱신 정책은 `DEP-01`, 민감 데이터 보존·삭제·암호화·감사는 `DATA-02`에서 확정했다. M3 구조 작업 이후의 네트워크·ARM·독립 배포 검증은 [M4](../roadmap/M4-modernization-scale.md)에서 관리한다.
+원격 Windows/Linux PR Gate와 기존 x64 release workflow는 M2 `TEST-01`에서 성공했고 실제 Google 공급자 smoke는 `AUTH-01`에서 완료했다. native ARM64를 포함한 Release Gate도 `33871950779`에서 성공했다. 지원 버전·lockfile·정기 갱신 정책은 `DEP-01`, 민감 데이터 보존·삭제·암호화·감사는 `DATA-02`에서 확정했다. M3 구조 작업 이후의 네트워크·다중 architecture·독립 배포 검증은 [M4](../roadmap/M4-modernization-scale.md)에서 관리한다.
 
 ## 품질 기록 위치
 

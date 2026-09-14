@@ -1,12 +1,18 @@
 # Dockerfile
-FROM node:24.18.0-bookworm-slim AS node-runtime
+FROM node:24.18.0-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS node-runtime
 
-FROM ubuntu:24.04
+FROM ubuntu:24.04@sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# 유틸 및 언어별 컴파일러/런타임 설치
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# 유틸 및 언어별 컴파일러/런타임 설치. The minimal base has no CA
+# bundle. APT still verifies the signed snapshot metadata during this one-time
+# TLS bootstrap; all later fetches verify TLS.
+RUN sed -ri 's#https?://(archive.ubuntu.com/ubuntu|ports.ubuntu.com/ubuntu-ports|security.ubuntu.com/ubuntu)#https://snapshot.ubuntu.com/ubuntu/20260810T000000Z#g' /etc/apt/sources.list.d/ubuntu.sources \
+    && apt-get -o Acquire::https::Verify-Peer=false update \
+    && apt-get -o Acquire::https::Verify-Peer=false install -y --no-install-recommends ca-certificates \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
     python3 \
     openjdk-21-jdk-headless \
     build-essential \
