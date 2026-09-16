@@ -88,6 +88,8 @@ class DataControlTest(unittest.TestCase):
             self.assertIn("~match_room:*", acl)
             self.assertIn("~websocket_session:*", acl)
             self.assertIn("+eval", acl)
+            self.assertIn("+hmset", acl)
+            self.assertIn("+pexpire", acl)
             self.assertNotIn("+@all", acl)
             self.assertNotIn("~*", acl)
             self.assertNotIn("+config", acl)

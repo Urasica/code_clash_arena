@@ -92,6 +92,15 @@ def main():
                 source_project, source_secrets, ports, "exec", "-T", "redis", "sh", "/usr/local/bin/cca-redis-cli",
                 "SET", "match_room:integration", "ok",
             )
+            compose(
+                source_project, source_secrets, ports, "exec", "-T", "redis", "sh", "/usr/local/bin/cca-redis-cli",
+                "HMSET", "ai_workspace:integration", "owner", "1", "status", "READY",
+            )
+            if compose(
+                source_project, source_secrets, ports, "exec", "-T", "redis", "sh", "/usr/local/bin/cca-redis-cli",
+                "PEXPIRE", "ai_workspace:integration", "60000",
+            ) != "1":
+                raise AssertionError("Redis application account could not set the workspace lease TTL.")
             forbidden_key = compose(
                 source_project, source_secrets, ports, "exec", "-T", "redis", "sh", "/usr/local/bin/cca-redis-cli",
                 "SET", "forbidden:key", "no",
