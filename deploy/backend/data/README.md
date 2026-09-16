@@ -25,6 +25,9 @@ MySQL 논리 backup 옵션과 계정 권한은 [MySQL 8.4 mysqldump](https://dev
 
 MySQL은 secure transport를 요구하고 local infile·X Protocol·general log를 끈다. Redis는 별도 volume 없이 read-only root와 `/tmp` tmpfs를 사용한다. `CONFIG`, `ACL`, 임의 key prefix는 앱 ACL에서 허용하지 않는다.
 
+앱 ACL은 Spring Data Redis가 AI workspace hash 저장에 사용하는 `HMSET`, WebSocket 세션·workspace의 `Duration` 만료 설정에 사용하는 `PEXPIRE`도 허용한다. `HSET`·`EXPIRE`만 허용하면 각각 AI 시작과 STOMP 연결이 실패한다.
+기존 secret bundle의 `redis.acl`은 코드 갱신만으로 바뀌지 않는다. 기존 앱 password를 재발급하지 않고 이 두 명령만 추가한 뒤 새 코드의 `validate-configuration`을 통과시켜야 한다. Redis 재시작은 기존 대기열·room·workspace 등 비영속 상태를 비운다.
+
 Linux의 Docker Engine 28 이전 버전은 loopback publish만으로 인접 L2 호스트 접근을 완전히 배제하지 못할 수 있다. OCI NSG/security list와 host firewall로도 3306/6379를 차단하고, VM 검증 때 다른 출발지 대조군으로 확인한다. [Docker port 보안 주의사항](https://docs.docker.com/engine/network/port-publishing/)
 
 ## Secret 생성과 서비스 준비

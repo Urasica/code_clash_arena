@@ -290,3 +290,13 @@
 - 임시 조치: 병합 후 완료 Action 기록은 삭제하지 않고 원인 추적 근거로 유지했다. 지원 기준과 다른 engine version PR은 닫았다.
 - 근본 해결: PR Gate를 ready PR 전용으로 제한하고 PR 번호별 최신 실행만 유지한다. `main` ruleset이 두 OS check와 최신 base 반영을 병합 전에 강제하며, 정기 version update는 중단하고 Security Update만 그룹으로 허용한다.
 - 검증 결과: workflow와 Dependabot YAML의 trigger·group 계약을 정적 검증하고 실제 PR에서 두 OS check 이름을 확인한 뒤 ruleset을 적용한다.
+
+## TS-030 운영 Redis ACL 누락으로 AI 맵 생성 500·게스트 매칭 STOMP 오류
+
+- 상태: 해결
+- 현상: OCI Private VM에서 게스트의 AI 맵 생성이 HTTP 500을 반환하고, 두 브라우저의 PvP 매칭은 WSS 업그레이드 후 STOMP `CONNECT`에 `ERROR`를 받고 재연결을 반복했다.
+- 재현 조건: DATA-03의 이전 앱 ACL로 Redis를 시작한 뒤 AI `/api/match/land-grab/start` 또는 게스트 STOMP `/ws-stomp` 연결을 시도한다.
+- 원인: `WorkspaceLeaseService.create()`의 hash `putAll`은 `HMSET`을 사용하고 `StompHandler`의 `Duration` 기반 세션 만료 설정은 `PEXPIRE`를 사용한다. 기존 ACL은 `HSET`·`EXPIRE`만 허용했다. VM에서 앱 계정의 `PEXPIRE`가 `NOPERM`을 반환했고 AI 500의 백엔드 stack은 `hMSet`에서 멈췄다.
+- 임시 조치: 기존 root 전용 ACL을 복구 가능하게 보존하고 자격증명을 유지한 채 두 명령만 추가했다. Redis를 재시작해 비영속 매칭 상태를 초기화했다.
+- 근본 해결: DATA-03 ACL 생성기의 명령 allowlist에 `HMSET`·`PEXPIRE`를 추가하고 unit 및 격리 Redis 통합 검사에 실제 명령 검증을 추가했다. 임의 키와 관리 명령은 열지 않았다.
+- 검증 결과: Python 단위 테스트 11건 통과. VM Redis 재시작 뒤 health 정상, 앱 계정의 `HMSET`·`PEXPIRE` 성공과 금지 키 `NOPERM` 확인. 공개 HTTPS에서 게스트 AI 맵 생성 200, WSS/SockJS/STOMP `CONNECTED` 확인. 두 기존 게스트의 매칭 방 생성·참가와 PvP 결과 저장이 백엔드 로그에 기록됐다. 로컬 Docker 통합 검사는 이 실행 계정의 Docker API 권한 부족으로 수행하지 못했다.

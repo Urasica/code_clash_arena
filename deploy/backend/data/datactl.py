@@ -48,8 +48,8 @@ REDIS_PATTERNS = [
 ]
 REDIS_COMMANDS = [
     "ping", "hello", "auth", "select", "client|setinfo", "client|setname", "client|id", "info",
-    "get", "set", "del", "exists", "expire", "ttl", "incr",
-    "hget", "hset", "hgetall", "hlen", "hexists",
+    "get", "set", "del", "exists", "expire", "pexpire", "ttl", "incr",
+    "hget", "hset", "hmset", "hgetall", "hlen", "hexists",
     "zadd", "zrange", "zrem", "zcard", "sadd", "srem", "smembers", "scard",
     "eval", "evalsha", "script|load", "publish",
 ]
