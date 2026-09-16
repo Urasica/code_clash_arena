@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import re
 import secrets
 import shutil
 import subprocess
@@ -12,6 +13,53 @@ from pathlib import Path
 
 DATA_ROOT = Path(__file__).resolve().parents[1]
 DATACTL = DATA_ROOT / "datactl.py"
+MYSQL_ERROR_LINE = re.compile(r"error|failed|denied|fatal|cannot|can't|invalid", re.IGNORECASE)
+GENERATED_SECRET = re.compile(r"\b[0-9a-f]{64}\b", re.IGNORECASE)
+
+
+def safe_mysql_log_line(line):
+    if not MYSQL_ERROR_LINE.search(line):
+        return None
+    if re.search(r"password|identified|secret|token", line, re.IGNORECASE):
+        return "[sensitive MySQL diagnostic withheld]"
+    return GENERATED_SECRET.sub("[generated credential redacted]", line)[-350:]
+
+
+def report_mysql_failure(project, secret_dir, ports, purpose):
+    env = os.environ.copy()
+    env.update({
+        "DATA_PROJECT_NAME": project,
+        "DATA_SECRETS_DIR": str(secret_dir),
+        "DATA_PURPOSE": purpose,
+        "MYSQL_HOST_PORT": str(ports[0]),
+        "REDIS_HOST_PORT": str(ports[1]),
+    })
+    base = ["docker", "compose", "-f", str(DATA_ROOT / "compose.yaml"), "-p", project]
+    try:
+        state = subprocess.run(
+            [*base, "ps", "--all", "--format", "json"], env=env,
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, check=False,
+        )
+        rows = [json.loads(line) for line in state.stdout.splitlines() if line.strip()]
+        mysql = [
+            {key: row[key] for key in ("State", "Health", "ExitCode") if key in row}
+            for row in rows if row.get("Service") == "mysql"
+        ]
+        print("MySQL failure state: " + json.dumps(mysql, sort_keys=True), file=sys.stderr)
+        if not mysql:
+            return
+        logs = subprocess.run(
+            [*base, "logs", "--no-color", "--tail", "100", "mysql"], env=env,
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, check=False,
+        )
+        signals = [safe_mysql_log_line(line) for line in logs.stdout.splitlines()]
+        signals = [line for line in signals if line]
+        for line in signals[-12:]:
+            print("MySQL failure signal: " + line, file=sys.stderr)
+        if not signals:
+            print("MySQL failure signal: none in last 100 log lines", file=sys.stderr)
+    except (OSError, ValueError, KeyError):
+        print("MySQL failure diagnostic unavailable", file=sys.stderr)
 
 
 def run(command, *, env=None, input_text=None, expect=0):
@@ -147,6 +195,10 @@ def main():
             if absent != "0" or restore_report["redis_recovery"] != "empty-restart":
                 raise AssertionError("Redis restored stale transient state.")
             print("DATA-03 disposable MySQL/Redis backup and restore contract: PASS")
+        except Exception:
+            report_mysql_failure(source_project, source_secrets, ports, "service")
+            report_mysql_failure(restore_project, restore_secrets, ports, "restore")
+            raise
         finally:
             for project, directory, purpose in (
                 (restore_project, restore_secrets, "restore"),
